@@ -8,22 +8,25 @@ It must be updated after each meaningful change.
 
 ## 🟢 Current state
 
-Full end-to-end flow working:
-**Bitcoin Core → ZMQ → FastAPI → WebSocket → TypeScript client in browser**
+Full end-to-end flow working with live rendering:
+**Bitcoin Core → ZMQ → FastAPI → WebSocket → PixiJS canvas in browser**
 
 - `server/main.py` — FastAPI with ZMQ listener, in-memory mempool, `/ws` and `/snapshot`
-- `client/src/main.ts` — Vite + TypeScript, connects to WebSocket and logs live events
-- Live `tx_seen` and `block_seen` events visible in browser console
+- `client/src/main.ts` — PixiJS canvas rendering live mempool as orange circles
+  - Each `tx_seen` spawns a circle at center, drifts outward
+  - Circles stop at 85% of screen radius
+  - On `block_seen`: all circles cleared
+  - Max 500 nodes rendered at once
+  - Snapshot loaded on startup
 
 ---
 
 ## ✅ Last completed
 
-- Built Vite + TypeScript client with PixiJS installed
-- WebSocket connection with auto-reconnect
-- Snapshot fetch on startup
-- CORS configured in FastAPI for `localhost:5173`
-- Verified live Bitcoin transactions in browser console
+- PixiJS Application set up with fullscreen black canvas
+- Live transaction nodes rendered as orange circles
+- Ticker-based animation loop moving nodes outward
+- Verified visually in browser
 
 ---
 
@@ -35,9 +38,8 @@ Nothing.
 
 ## ▶️ Next recommended step
 
-**Start PixiJS rendering:**
-
-1. Set up PixiJS `Application` with fullscreen canvas
-2. Render each `tx_seen` as a small circle in the center (mempool zone)
-3. Move circles slowly outward over time
-4. On `block_seen`: animate circles into a ring around the edge and remove them
+Make the visualization more interesting:
+- Vary node size or color by fee rate (requires RPC enrichment)
+- Add a visible mempool ring / boundary
+- Animate block confirmation (flash, sweep, or burst effect)
+- Add a block ring that persists around the edge
