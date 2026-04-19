@@ -9,54 +9,36 @@ It must be updated after each meaningful change.
 ## 🟢 Current state
 
 - Repo `blokkflyt` created (monorepo)
-- Basic project structure defined:
-  - `server/`
-  - `client/`
-  - `shared/`
+- Project structure defined: `server/`, `client/`, `shared/`
 - Architecture documented in `docs/architecture.md`
-- README created
-- No live Bitcoin integration yet
+- `server/main.py` — FastAPI server kjørende med:
+  - ZMQ-lytter for `hashtx` og `hashblock`
+  - In-memory mempool-state
+  - WebSocket endpoint `/ws` — broadcaster live events til klienter
+  - REST endpoint `GET /snapshot` — returnerer gjeldende mempool
+- Ende-til-ende verifisert: live `tx_seen`-events strømmer til WebSocket-klient
 
 ---
 
 ## ✅ Last completed
 
-- Chose project name: **Blokkflyt**
-- Decided on architecture:
-  - Python server (FastAPI)
-  - TypeScript client (PixiJS)
-  - Bitcoin Core via ZMQ + RPC
-- Defined communication model:
-  - REST for snapshot
-  - WebSocket for live updates
-- Defined initial event schema (conceptually)
+- Bygget `server/main.py` med FastAPI + ZMQ + WebSocket
+- Verifisert live Bitcoin-transaksjoner over WebSocket
+- `GET /snapshot` returnerer gjeldende mempool-innhold
 
 ---
 
 ## 🔧 In progress
 
-- Setting up initial Python server skeleton
-- Defining WebSocket connection between server and client
-- Preparing first minimal client (no rendering yet)
+Nothing.
 
 ---
 
 ## ▶️ Next recommended step
 
-**Goal: first end-to-end live flow**
+**Bygg minimal TypeScript-klient:**
 
-1. Implement ZMQ listener in Python server:
-   - subscribe to:
-     - `hashtx` or `rawtx`
-     - `hashblock` or `rawblock`
-
-2. When event is received:
-   - log it
-   - broadcast minimal event over WebSocket
-
-3. Define minimal event format:
-```json
-{
-  "type": "tx_seen",
-  "tx": { "id": "..." }
-}
+1. `client/` — Vite + TypeScript prosjekt med PixiJS
+2. Koble til `ws://localhost:8000/ws` og motta events
+3. Logg events til konsoll (ingen rendering ennå)
+4. Hent snapshot på oppstart via `GET /snapshot`

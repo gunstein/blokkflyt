@@ -27,11 +27,29 @@ docs/     — architecture, decisions, handoff
 
 ## Running the project
 
-> Fill in as setup is implemented.
+- Server: `cd server && uvicorn main:app --reload`
+- Client: `cd client && ...` — TBD
+- Requires a Bitcoin Core node with ZMQ enabled (see Infrastructure below)
 
-- Server: `cd server && ...`
-- Client: `cd client && ...`
-- Requires a local Bitcoin Core node with ZMQ enabled
+## Infrastructure
+
+**Bitcoin Core node** runs on `192.168.0.104` (home network server, snap install).
+
+- Config: `/home/gunnis/snap/bitcoin-core/common/.bitcoin/bitcoin.conf`
+- Start daemon: `snap run bitcoin-core.daemon -daemon`
+- Stop daemon: `bitcoin-core.cli stop`
+- Restart: `bitcoin-core.cli stop && snap run bitcoin-core.daemon -daemon`
+- Status/info: `bitcoin-core.cli getblockchaininfo`
+- ZMQ status: `bitcoin-core.cli getzmqnotifications`
+- Note: `sudo snap restart bitcoin-core` fungerer IKKE — noden har ingen snap-service, må stoppes/startes manuelt
+- ZMQ ports: `28332` (blocks), `28333` (txs) — both on `0.0.0.0`
+- UFW: ports 28332/28333 open for `192.168.0.0/24`
+- ZMQ topics: `hashblock` (port 28332), `hashtx` (port 28333)
+
+**Python dependencies** (no venv — system Python with `--break-system-packages`):
+```bash
+pip3 install pyzmq --break-system-packages
+```
 
 ## Key conventions
 
