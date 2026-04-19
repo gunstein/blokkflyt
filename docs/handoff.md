@@ -23,10 +23,14 @@ Full end-to-end flow working with live rendering:
 
 ## ✅ Last completed
 
-- PixiJS Application set up with fullscreen black canvas
-- Live transaction nodes rendered as orange circles
-- Ticker-based animation loop moving nodes outward
-- Verified visually in browser
+- Added RPC client (`python-bitcoinrpc`) to fetch fee rate per transaction via `getmempoolentry`
+- Fee rate used to color and size transaction nodes:
+  - Blue = low fee (<5 sat/vB)
+  - Green = medium (5–20 sat/vB)
+  - Orange = high (20–50 sat/vB)
+  - Red = very high (>50 sat/vB)
+- RPC credentials stored in `server/.env` (gitignored), template in `server/.env.example`
+- Verified fee-colored nodes visible in browser
 
 ---
 
@@ -38,8 +42,6 @@ Nothing.
 
 ## ▶️ Next recommended step
 
-Make the visualization more interesting:
-- Vary node size or color by fee rate (requires RPC enrichment)
-- Add a visible mempool ring / boundary
-- Animate block confirmation (flash, sweep, or burst effect)
-- Add a block ring that persists around the edge
+- Add a visible ring/boundary around the mempool zone
+- Animate block confirmation (flash, sweep, or burst effect when block is mined)
+- Add a block ring around the edge showing recent blocks

@@ -23,15 +23,33 @@ document.getElementById("app")!.appendChild(app.canvas);
 function centerX() { return app.screen.width / 2; }
 function centerY() { return app.screen.height / 2; }
 
-function addTx(txid: string): void {
+function feeColor(feeRate: number | null): number {
+  if (feeRate === null) return 0x6666ff; // purple — unknown
+  if (feeRate < 5)   return 0x8888ff;   // blue — low fee
+  if (feeRate < 20)  return 0x44cc88;   // green — medium fee
+  if (feeRate < 50)  return 0xf7931a;   // orange — high fee
+  return 0xff3333;                       // red — very high fee
+}
+
+function feeRadius(feeRate: number | null): number {
+  if (feeRate === null) return 3;
+  if (feeRate < 5)  return 2;
+  if (feeRate < 20) return 3;
+  if (feeRate < 50) return 4.5;
+  return 6;
+}
+
+function addTx(txid: string, feeRate: number | null): void {
   if (nodes.has(txid)) return;
   if (nodes.size >= MAX_NODES) return;
 
   const angle = Math.random() * Math.PI * 2;
   const speed = 0.2 + Math.random() * 0.3;
+  const color = feeColor(feeRate);
+  const radius = feeRadius(feeRate);
 
   const gfx = new Graphics();
-  gfx.circle(0, 0, 3).fill({ color: 0xf7931a, alpha: 0.8 });
+  gfx.circle(0, 0, radius).fill({ color, alpha: 0.85 });
   gfx.x = centerX();
   gfx.y = centerY();
   app.stage.addChild(gfx);
@@ -82,7 +100,9 @@ app.ticker.add(() => {
 async function fetchSnapshot(): Promise<void> {
   const res = await fetch(`${API_BASE}/snapshot`);
   const data = await res.json();
-  data.mempool.forEach((txid: string) => addTx(txid));
+  data.mempool.forEach((tx: { txid: string; fee_rate: number | null }) =>
+    addTx(tx.txid, tx.fee_rate)
+  );
 }
 
 function connectWebSocket(): void {
@@ -90,7 +110,7 @@ function connectWebSocket(): void {
 
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
-    if (msg.type === "tx_seen") addTx(msg.txid);
+    if (msg.type === "tx_seen") addTx(msg.txid, msg.fee_rate);
     else if (msg.type === "block_seen") onBlockSeen();
   };
 
