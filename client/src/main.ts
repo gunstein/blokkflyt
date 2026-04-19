@@ -5,7 +5,7 @@ const WS_URL = "ws://localhost:8000/ws";
 
 const MAX_NODES = 500;
 const MAX_BLOCKS = 12;
-const BLOCK_FADE_DURATION = 60000; // ms until fully faded
+const BLOCK_FADE_DURATION = 3600000; // ms until fully faded (1 hour)
 
 interface TxNode {
   txid: string;
@@ -14,6 +14,7 @@ interface TxNode {
   y: number;
   vx: number;
   vy: number;
+  firing: boolean;
 }
 
 interface BlockSegment {
@@ -51,7 +52,15 @@ window.addEventListener("resize", drawRing);
 
 // --- block segments ---
 
-function addBlockSegment(): void {
+function blockStrokeWidth(sizeKb: number): number {
+  if (sizeKb <= 0)    return 6;
+  if (sizeKb < 200)   return 4;
+  if (sizeKb < 600)   return 8;
+  if (sizeKb < 900)   return 12;
+  return 16;
+}
+
+function addBlockSegment(sizeKb: number): void {
   const cx = centerX();
   const cy = centerY();
   const r = ringRadius();
@@ -59,10 +68,11 @@ function addBlockSegment(): void {
   const angleStep = (Math.PI * 2) / MAX_BLOCKS;
   const angle = segmentCount * angleStep - Math.PI / 2;
   const arcWidth = angleStep * 0.7;
+  const strokeWidth = blockStrokeWidth(sizeKb);
 
   const gfx = new Graphics();
   gfx.arc(cx, cy, r, angle - arcWidth / 2, angle + arcWidth / 2)
-    .stroke({ color: 0xf7931a, width: 8, alpha: 1 });
+    .stroke({ color: 0xf7931a, width: strokeWidth, alpha: 1 });
   app.stage.addChild(gfx);
 
   blockSegments.push({ gfx, createdAt: Date.now() });
@@ -77,21 +87,29 @@ function addBlockSegment(): void {
 
 function feeColor(feeRate: number | null): number {
   if (feeRate === null) return 0x6666ff;
-  if (feeRate < 5)   return 0x8888ff;
-  if (feeRate < 20)  return 0x44cc88;
-  if (feeRate < 50)  return 0xf7931a;
-  return 0xff3333;
+  if (feeRate < 2)   return 0x8888ff;   // blue — very low
+  if (feeRate < 5)   return 0x44cc88;   // green — low
+  if (feeRate < 15)  return 0xf7931a;   // orange — medium
+  return 0xff3333;                       // red — high
 }
 
-function feeRadius(feeRate: number | null): number {
-  if (feeRate === null) return 3;
-  if (feeRate < 5)  return 2;
-  if (feeRate < 20) return 3;
-  if (feeRate < 50) return 4.5;
-  return 6;
+function vsizeRadius(vsize: number | null): number {
+  if (vsize === null) return 3;
+  if (vsize < 200)  return 2.5;
+  if (vsize < 500)  return 4;
+  if (vsize < 1000) return 6;
+  return 9;
 }
 
-function addTx(txid: string, feeRate: number | null): void {
+function amountAlpha(amountBtc: number | null): number {
+  if (amountBtc === null) return 0.6;
+  if (amountBtc < 0.01) return 0.4;
+  if (amountBtc < 0.1)  return 0.6;
+  if (amountBtc < 1)    return 0.8;
+  return 1.0;
+}
+
+function addTx(txid: string, feeRate: number | null, vsize: number | null, amountBtc: number | null): void {
   if (nodes.has(txid)) return;
   if (nodes.size >= MAX_NODES) {
     const oldest = nodes.keys().next().value!;
@@ -104,19 +122,20 @@ function addTx(txid: string, feeRate: number | null): void {
   const angle = Math.random() * Math.PI * 2;
   const speed = 0.2 + Math.random() * 0.3;
   const color = feeColor(feeRate);
-  const radius = feeRadius(feeRate);
+  const radius = vsizeRadius(vsize);
+  const alpha = amountAlpha(amountBtc);
 
   const gfx = new Graphics();
-  gfx.circle(0, 0, radius).fill({ color, alpha: 0.85 });
+  gfx.circle(0, 0, radius).fill({ color, alpha });
   gfx.x = centerX();
   gfx.y = centerY();
   app.stage.addChild(gfx);
 
   nodes.set(txid, { txid, gfx, x: centerX(), y: centerY(),
-    vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed });
+    vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, firing: false });
 }
 
-function flashAndClear(): void {
+function flashAndClear(txids: string[]): void {
   const cx = centerX();
   const cy = centerY();
   const r = ringRadius();
@@ -126,19 +145,24 @@ function flashAndClear(): void {
   const tx = cx + Math.cos(targetAngle) * r;
   const ty = cy + Math.sin(targetAngle) * r;
 
-  for (const node of nodes.values()) {
+  const targets = txids.length > 0
+    ? [...nodes.values()].filter(n => txids.includes(n.txid))
+    : [...nodes.values()];
+
+  for (const node of targets) {
     const dx = tx - node.x;
     const dy = ty - node.y;
     const dist = Math.sqrt(dx * dx + dy * dy) || 1;
     const speed = 3 + Math.random() * 2;
     node.vx = (dx / dist) * speed;
     node.vy = (dy / dist) * speed;
+    node.firing = true;
   }
 }
 
-function onBlockSeen(): void {
-  addBlockSegment();
-  flashAndClear();
+function onBlockSeen(confirmedTxids: string[], sizeKb: number): void {
+  addBlockSegment(sizeKb);
+  flashAndClear(confirmedTxids);
 }
 
 // --- animation loop ---
@@ -157,14 +181,14 @@ app.ticker.add(() => {
     const dy = node.y - cy;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
-    if (node.vx !== 0 && dist >= maxRadius * 0.98) {
+    if (node.firing && dist >= maxRadius * 0.98) {
       toRemove.push(txid);
       app.stage.removeChild(node.gfx);
       node.gfx.destroy();
       continue;
     }
 
-    if (node.vx === 0 && dist >= maxRadius) {
+    if (!node.firing && dist >= maxRadius) {
       node.x = cx + (dx / dist) * maxRadius;
       node.y = cy + (dy / dist) * maxRadius;
     }
@@ -188,8 +212,8 @@ app.ticker.add(() => {
 async function fetchSnapshot(): Promise<void> {
   const res = await fetch(`${API_BASE}/snapshot`);
   const data = await res.json();
-  data.mempool.forEach((tx: { txid: string; fee_rate: number | null }) =>
-    addTx(tx.txid, tx.fee_rate)
+  data.mempool.forEach((tx: { txid: string; fee_rate: number | null; vsize: number | null; amount_btc: number | null }) =>
+    addTx(tx.txid, tx.fee_rate, tx.vsize, tx.amount_btc)
   );
 }
 
@@ -197,8 +221,8 @@ function connectWebSocket(): void {
   const ws = new WebSocket(WS_URL);
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
-    if (msg.type === "tx_seen") addTx(msg.txid, msg.fee_rate);
-    else if (msg.type === "block_seen") onBlockSeen();
+    if (msg.type === "tx_seen") addTx(msg.txid, msg.fee_rate, msg.vsize, msg.amount_btc);
+    else if (msg.type === "block_seen") onBlockSeen(msg.confirmed_txids ?? [], msg.size_kb ?? 0);
   };
   ws.onclose = () => setTimeout(connectWebSocket, 3000);
 }
@@ -208,5 +232,7 @@ connectWebSocket();
 
 // press 'b' to simulate a block (dev only)
 window.addEventListener("keydown", (e) => {
-  if (e.key === "b") onBlockSeen();
+  if (e.key === "b") onBlockSeen([], 800);
 });
+
+(window as any).simulateBlock = (sizeKb: number) => onBlockSeen([], sizeKb);

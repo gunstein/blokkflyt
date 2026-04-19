@@ -29,15 +29,23 @@ def rpc() -> AuthServiceProxy:
     return AuthServiceProxy(f"http://{RPC_USER}:{RPC_PASSWORD}@{BITCOIN_HOST}:{RPC_PORT}")
 
 
-async def get_fee_rate(txid: str) -> float | None:
+async def get_tx_info(txid: str) -> dict:
     try:
         entry = await asyncio.to_thread(lambda: rpc().getmempoolentry(txid))
         fees = entry.get("fees", {})
         vsize = entry.get("vsize", 1)
         fee_sat = int(float(fees.get("base", 0)) * 1e8)
-        return round(fee_sat / vsize, 2)
+        fee_rate = round(fee_sat / vsize, 2)
     except Exception:
-        return None
+        return {"fee_rate": None, "vsize": None, "amount_btc": None}
+
+    try:
+        raw = await asyncio.to_thread(lambda: rpc().getrawtransaction(txid, True))
+        amount_btc = round(sum(float(o["value"]) for o in raw.get("vout", [])), 8)
+    except Exception:
+        amount_btc = None
+
+    return {"fee_rate": fee_rate, "vsize": vsize, "amount_btc": amount_btc}
 
 
 async def broadcast(event: dict) -> None:
@@ -59,10 +67,22 @@ async def listen_txs() -> None:
     while True:
         parts = await sock.recv_multipart()
         txid = parts[1].hex()
-        fee_rate = await get_fee_rate(txid)
-        tx = {"txid": txid, "fee_rate": fee_rate}
+        info = await get_tx_info(txid)
+        tx = {"txid": txid, **info}
         mempool[txid] = tx
         await broadcast({"type": "tx_seen", **tx})
+
+
+async def get_block_info(block_hash: str) -> dict:
+    try:
+        block = await asyncio.to_thread(lambda: rpc().getblock(block_hash, 1))
+        return {
+            "confirmed_txids": block.get("tx", []),
+            "ntx": block.get("nTx", 0),
+            "size_kb": round(block.get("size", 0) / 1024, 1),
+        }
+    except Exception:
+        return {"confirmed_txids": [], "ntx": 0, "size_kb": 0}
 
 
 async def listen_blocks() -> None:
@@ -73,8 +93,10 @@ async def listen_blocks() -> None:
     while True:
         parts = await sock.recv_multipart()
         block_hash = parts[1].hex()
-        mempool.clear()
-        await broadcast({"type": "block_seen", "hash": block_hash})
+        info = await get_block_info(block_hash)
+        for txid in info["confirmed_txids"]:
+            mempool.pop(txid, None)
+        await broadcast({"type": "block_seen", "hash": block_hash, **info})
 
 
 @asynccontextmanager

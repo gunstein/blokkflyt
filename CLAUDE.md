@@ -51,6 +51,14 @@ docs/     — architecture, decisions, handoff
 pip3 install pyzmq --break-system-packages
 ```
 
+## Python dependencies
+
+Install with `pip3 install <package> --break-system-packages` (no venv):
+- `pyzmq` — ZMQ listener
+- `python-bitcoinrpc` — Bitcoin Core RPC client
+- `fastapi` + `uvicorn` — web server
+- `python-dotenv` — load `.env` credentials
+
 ## Key conventions
 
 - `docs/handoff.md` must be updated after each meaningful change — it is the current working state
