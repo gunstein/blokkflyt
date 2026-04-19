@@ -23,6 +23,21 @@ document.getElementById("app")!.appendChild(app.canvas);
 function centerX() { return app.screen.width / 2; }
 function centerY() { return app.screen.height / 2; }
 
+const ringGfx = new Graphics();
+app.stage.addChild(ringGfx);
+
+function drawRing(): void {
+  const cx = centerX();
+  const cy = centerY();
+  const r = Math.min(cx, cy) * 0.85;
+  ringGfx.clear();
+  ringGfx.circle(cx, cy, r).stroke({ color: 0x334455, width: 1.5, alpha: 0.6 });
+  ringGfx.circle(cx, cy, 12).stroke({ color: 0x445566, width: 1, alpha: 0.4 });
+}
+
+drawRing();
+window.addEventListener("resize", drawRing);
+
 function feeColor(feeRate: number | null): number {
   if (feeRate === null) return 0x6666ff; // purple — unknown
   if (feeRate < 5)   return 0x8888ff;   // blue — low fee
@@ -41,7 +56,13 @@ function feeRadius(feeRate: number | null): number {
 
 function addTx(txid: string, feeRate: number | null): void {
   if (nodes.has(txid)) return;
-  if (nodes.size >= MAX_NODES) return;
+  if (nodes.size >= MAX_NODES) {
+    const oldest = nodes.keys().next().value!;
+    const node = nodes.get(oldest)!;
+    app.stage.removeChild(node.gfx);
+    node.gfx.destroy();
+    nodes.delete(oldest);
+  }
 
   const angle = Math.random() * Math.PI * 2;
   const speed = 0.2 + Math.random() * 0.3;

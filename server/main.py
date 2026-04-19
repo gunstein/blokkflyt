@@ -36,8 +36,7 @@ async def get_fee_rate(txid: str) -> float | None:
         vsize = entry.get("vsize", 1)
         fee_sat = int(float(fees.get("base", 0)) * 1e8)
         return round(fee_sat / vsize, 2)
-    except Exception as e:
-        print(f"[RPC] getmempoolentry {txid[:8]}... failed: {e}")
+    except Exception:
         return None
 
 
