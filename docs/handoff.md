@@ -8,23 +8,22 @@ It must be updated after each meaningful change.
 
 ## 🟢 Current state
 
-- Repo `blokkflyt` created (monorepo)
-- Project structure defined: `server/`, `client/`, `shared/`
-- Architecture documented in `docs/architecture.md`
-- `server/main.py` — FastAPI server kjørende med:
-  - ZMQ-lytter for `hashtx` og `hashblock`
-  - In-memory mempool-state
-  - WebSocket endpoint `/ws` — broadcaster live events til klienter
-  - REST endpoint `GET /snapshot` — returnerer gjeldende mempool
-- Ende-til-ende verifisert: live `tx_seen`-events strømmer til WebSocket-klient
+Full ende-til-ende flyt fungerer:
+**Bitcoin Core → ZMQ → FastAPI → WebSocket → TypeScript-klient i browser**
+
+- `server/main.py` — FastAPI med ZMQ-lytter, in-memory mempool, `/ws` og `/snapshot`
+- `client/src/main.ts` — Vite + TypeScript, kobler til WebSocket og logger live events
+- Live `tx_seen` og `block_seen` events vises i browser-konsollen
 
 ---
 
 ## ✅ Last completed
 
-- Bygget `server/main.py` med FastAPI + ZMQ + WebSocket
-- Verifisert live Bitcoin-transaksjoner over WebSocket
-- `GET /snapshot` returnerer gjeldende mempool-innhold
+- Bygget Vite + TypeScript klient med PixiJS installert
+- WebSocket-tilkobling med auto-reconnect
+- Snapshot-henting på oppstart
+- CORS konfigurert i FastAPI for `localhost:5173`
+- Verifisert live Bitcoin-transaksjoner i browser-konsoll
 
 ---
 
@@ -36,9 +35,9 @@ Nothing.
 
 ## ▶️ Next recommended step
 
-**Bygg minimal TypeScript-klient:**
+**Begynn PixiJS-rendering:**
 
-1. `client/` — Vite + TypeScript prosjekt med PixiJS
-2. Koble til `ws://localhost:8000/ws` og motta events
-3. Logg events til konsoll (ingen rendering ennå)
-4. Hent snapshot på oppstart via `GET /snapshot`
+1. Sett opp PixiJS `Application` med fullskjerm canvas
+2. Vis hver `tx_seen` som en liten sirkel i midten (mempool-sonen)
+3. Flytt sirkler sakte utover over tid
+4. Ved `block_seen`: animer sirkler inn i en ring rundt kanten og fjern dem

@@ -28,7 +28,7 @@ docs/     — architecture, decisions, handoff
 ## Running the project
 
 - Server: `cd server && uvicorn main:app --reload`
-- Client: `cd client && ...` — TBD
+- Client: `cd client && npm run dev` → åpner på `http://localhost:5173`
 - Requires a Bitcoin Core node with ZMQ enabled (see Infrastructure below)
 
 ## Infrastructure
