@@ -8,22 +8,22 @@ It must be updated after each meaningful change.
 
 ## 🟢 Current state
 
-Full ende-til-ende flyt fungerer:
-**Bitcoin Core → ZMQ → FastAPI → WebSocket → TypeScript-klient i browser**
+Full end-to-end flow working:
+**Bitcoin Core → ZMQ → FastAPI → WebSocket → TypeScript client in browser**
 
-- `server/main.py` — FastAPI med ZMQ-lytter, in-memory mempool, `/ws` og `/snapshot`
-- `client/src/main.ts` — Vite + TypeScript, kobler til WebSocket og logger live events
-- Live `tx_seen` og `block_seen` events vises i browser-konsollen
+- `server/main.py` — FastAPI with ZMQ listener, in-memory mempool, `/ws` and `/snapshot`
+- `client/src/main.ts` — Vite + TypeScript, connects to WebSocket and logs live events
+- Live `tx_seen` and `block_seen` events visible in browser console
 
 ---
 
 ## ✅ Last completed
 
-- Bygget Vite + TypeScript klient med PixiJS installert
-- WebSocket-tilkobling med auto-reconnect
-- Snapshot-henting på oppstart
-- CORS konfigurert i FastAPI for `localhost:5173`
-- Verifisert live Bitcoin-transaksjoner i browser-konsoll
+- Built Vite + TypeScript client with PixiJS installed
+- WebSocket connection with auto-reconnect
+- Snapshot fetch on startup
+- CORS configured in FastAPI for `localhost:5173`
+- Verified live Bitcoin transactions in browser console
 
 ---
 
@@ -35,9 +35,9 @@ Nothing.
 
 ## ▶️ Next recommended step
 
-**Begynn PixiJS-rendering:**
+**Start PixiJS rendering:**
 
-1. Sett opp PixiJS `Application` med fullskjerm canvas
-2. Vis hver `tx_seen` som en liten sirkel i midten (mempool-sonen)
-3. Flytt sirkler sakte utover over tid
-4. Ved `block_seen`: animer sirkler inn i en ring rundt kanten og fjern dem
+1. Set up PixiJS `Application` with fullscreen canvas
+2. Render each `tx_seen` as a small circle in the center (mempool zone)
+3. Move circles slowly outward over time
+4. On `block_seen`: animate circles into a ring around the edge and remove them

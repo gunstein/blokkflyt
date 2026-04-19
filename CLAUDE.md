@@ -28,7 +28,7 @@ docs/     — architecture, decisions, handoff
 ## Running the project
 
 - Server: `cd server && uvicorn main:app --reload`
-- Client: `cd client && npm run dev` → åpner på `http://localhost:5173`
+- Client: `cd client && npm run dev` → opens at `http://localhost:5173`
 - Requires a Bitcoin Core node with ZMQ enabled (see Infrastructure below)
 
 ## Infrastructure
@@ -41,7 +41,7 @@ docs/     — architecture, decisions, handoff
 - Restart: `bitcoin-core.cli stop && snap run bitcoin-core.daemon -daemon`
 - Status/info: `bitcoin-core.cli getblockchaininfo`
 - ZMQ status: `bitcoin-core.cli getzmqnotifications`
-- Note: `sudo snap restart bitcoin-core` fungerer IKKE — noden har ingen snap-service, må stoppes/startes manuelt
+- Note: `sudo snap restart bitcoin-core` does NOT work — the node has no snap service, must be stopped/started manually
 - ZMQ ports: `28332` (blocks), `28333` (txs) — both on `0.0.0.0`
 - UFW: ports 28332/28333 open for `192.168.0.0/24`
 - ZMQ topics: `hashblock` (port 28332), `hashtx` (port 28333)
