@@ -144,6 +144,11 @@
         <div class="hud-value green" id="peers-count">—</div>
         <div class="peers-dots" id="peers-dots"></div>
       </div>
+      <div class="hud-block">
+        <div class="hud-label">Network</div>
+        <div class="hud-row">Hashrate <span id="hashrate">—</span></div>
+        <div class="hud-row">Difficulty <span id="difficulty">—</span></div>
+      </div>
     </div>
 
     <div class="hud" id="hud-right">
@@ -175,10 +180,19 @@
         <div class="legend-dot" style="background:#4488ff"></div> In Mempool
       </div>
       <div class="legend-item">
+        <div class="legend-dot" style="background:#f7931a"></div> High Fee
+      </div>
+      <div class="legend-item">
         <div class="legend-dot" style="background:#ffdd00"></div> Selected for Block
       </div>
       <div class="legend-item">
         <div class="legend-dot" style="background:#aaaaaa"></div> Confirmed in Block
+      </div>
+      <div class="legend-item" style="border-left: 1px solid #334455; padding-left: 16px; color: #556677;">
+        Size = transaction complexity (vbytes)
+      </div>
+      <div class="legend-item" style="color: #556677;">
+        Brightness = amount in BTC
       </div>
     </div>
 

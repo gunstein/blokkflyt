@@ -150,6 +150,9 @@ async def stats() -> JSONResponse:
         )
         best_hash = chain_info.get("bestblockhash", "")
         best_block = await asyncio.to_thread(lambda: rpc().getblockheader(best_hash))
+        difficulty = chain_info.get("difficulty", 0)
+        # derive estimated hashrate from difficulty: hashrate ≈ difficulty * 2^32 / 600
+        hashrate_eh = round(float(str(difficulty)) * (2 ** 32) / 600 / 1e18, 2)
         return JSONResponse({
             "block_height": chain_info.get("blocks", 0),
             "best_block_hash": best_hash,
@@ -158,8 +161,12 @@ async def stats() -> JSONResponse:
             "mempool_size_mb": round(mempool_info.get("bytes", 0) / 1e6, 2),
             "mempool_median_fee": _median_fee_rate(),
             "peers": network_info.get("connections", 0),
+            "difficulty": round(float(str(difficulty)) / 1e12, 2),
+            "hashrate_eh": hashrate_eh,
         })
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return JSONResponse({"error": str(e)}, status_code=500)
 
 

@@ -9,7 +9,7 @@ const MAX_BLOCKS = 12;
 const BLOCK_FADE_DURATION = 3600000;
 const NEW_TX_DURATION = 3000; // ms a tx stays "new" (purple)
 
-type TxState = "new" | "mempool" | "selected";
+type TxState = "new" | "mempool" | "high_fee" | "selected";
 
 interface TxNode {
   txid: string;
@@ -23,6 +23,7 @@ interface TxNode {
   createdAt: number;
   vsize: number | null;
   amountBtc: number | null;
+  feeRate: number | null;
 }
 
 interface BlockSegment {
@@ -125,8 +126,11 @@ function addBlockSegment(sizeKb: number, ntx: number, totalBtc: number, height: 
 
 // --- tx nodes ---
 
+const HIGH_FEE_THRESHOLD = 10; // sat/vB
+
 function stateColor(state: TxState): number {
   if (state === "new")      return 0xaa66ff; // purple
+  if (state === "high_fee") return 0xf7931a; // orange — high fee
   if (state === "selected") return 0xffdd00; // yellow
   return 0x4488ff;                            // blue — in mempool
 }
@@ -155,7 +159,7 @@ function drawNode(node: TxNode): void {
   node.gfx.circle(0, 0, radius).fill({ color, alpha });
 }
 
-function addTx(txid: string, feeRate: number | null, vsize: number | null, amountBtc: number | null): void {
+function addTx(txid: string, feeRate: number | null, vsize: number | null, amountBtc: number | null, initialState: TxState = "new"): void {
   if (nodes.has(txid)) return;
   if (nodes.size >= MAX_NODES) {
     const oldest = nodes.keys().next().value!;
@@ -171,7 +175,7 @@ function addTx(txid: string, feeRate: number | null, vsize: number | null, amoun
   const alpha = amountAlpha(amountBtc);
 
   const gfx = new Graphics();
-  gfx.circle(0, 0, radius).fill({ color: stateColor("new"), alpha });
+  gfx.circle(0, 0, radius).fill({ color: stateColor(initialState), alpha });
   gfx.x = centerX();
   gfx.y = centerY();
   app.stage.addChild(gfx);
@@ -179,8 +183,8 @@ function addTx(txid: string, feeRate: number | null, vsize: number | null, amoun
   nodes.set(txid, {
     txid, gfx, x: centerX(), y: centerY(),
     vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
-    firing: false, state: "new", createdAt: Date.now(),
-    vsize, amountBtc,
+    firing: false, state: initialState, createdAt: Date.now(),
+    vsize, amountBtc, feeRate,
   });
 }
 
@@ -248,9 +252,11 @@ app.ticker.add(() => {
       node.vy = 0;
     }
 
-    // transition from new → mempool after NEW_TX_DURATION
+    // transition from new → mempool or high_fee after NEW_TX_DURATION
     if (node.state === "new" && now - node.createdAt > NEW_TX_DURATION) {
-      node.state = "mempool";
+      node.state = (node.feeRate !== null && node.feeRate >= HIGH_FEE_THRESHOLD)
+        ? "high_fee"
+        : "mempool";
       drawNode(node);
     }
 
@@ -273,9 +279,10 @@ app.ticker.add(() => {
 async function fetchSnapshot(): Promise<void> {
   const res = await fetch(`${API_BASE}/snapshot`);
   const data = await res.json();
-  data.mempool.forEach((tx: { txid: string; fee_rate: number | null; vsize: number | null; amount_btc: number | null }) =>
-    addTx(tx.txid, tx.fee_rate, tx.vsize, tx.amount_btc)
-  );
+  data.mempool.forEach((tx: { txid: string; fee_rate: number | null; vsize: number | null; amount_btc: number | null }) => {
+    const state: TxState = (tx.fee_rate !== null && tx.fee_rate >= HIGH_FEE_THRESHOLD) ? "high_fee" : "mempool";
+    addTx(tx.txid, tx.fee_rate, tx.vsize, tx.amount_btc, state);
+  });
 }
 
 function connectWebSocket(): void {
@@ -327,6 +334,12 @@ function updateHud(data: Record<string, any>): void {
     hash ? hash.slice(0, 16) + "…" + hash.slice(-6) : "—";
   (document.getElementById("latest-block-time")!).textContent =
     data.best_block_time ? utcTime(data.best_block_time) : "—";
+
+  if (data.hashrate_eh !== undefined)
+    (document.getElementById("hashrate")!).textContent = data.hashrate_eh + " EH/s";
+  if (data.difficulty !== undefined)
+    (document.getElementById("difficulty")!).textContent =
+      data.difficulty + " T";
 
   const dotsEl = document.getElementById("peers-dots")!;
   dotsEl.innerHTML = "";
