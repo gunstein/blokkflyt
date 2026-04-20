@@ -60,6 +60,33 @@
 
       .hud-row span { color: #fff; }
 
+      #news-ticker {
+        position: fixed;
+        bottom: 52px;
+        left: 50%;
+        transform: translateX(-50%);
+        max-width: 700px;
+        width: 90%;
+        text-align: center;
+        pointer-events: none;
+        height: 18px;
+        overflow: hidden;
+      }
+
+      .news-item {
+        position: absolute;
+        width: 100%;
+        font-size: 11px;
+        color: #f7931a;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        opacity: 0;
+        transition: opacity 0.6s ease;
+      }
+
+      .news-item.visible { opacity: 1; }
+
       #legend {
         position: fixed;
         bottom: 20px;
@@ -179,6 +206,8 @@
         <div class="hud-row">Time <span id="latest-block-time">—</span></div>
       </div>
     </div>
+
+    <div id="news-ticker"></div>
 
     <div id="legend">
       <div class="legend-item">

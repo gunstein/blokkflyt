@@ -1,8 +1,10 @@
 import asyncio
 import os
+import xml.etree.ElementTree as ET
 from collections import deque
 from contextlib import asynccontextmanager
 
+import httpx
 import zmq
 import zmq.asyncio
 from bitcoinrpc.authproxy import AuthServiceProxy
@@ -20,11 +22,15 @@ RPC_PORT = os.getenv("BITCOIN_RPC_PORT", "8332")
 ZMQ_BLOCK_PORT = 28332
 ZMQ_TX_PORT = 28333
 
+NEWS_RSS_URL = "https://bitcoinmagazine.com/feed"
+NEWS_FETCH_INTERVAL = 900  # 15 minutes
+
 mempool: dict[str, dict] = {}
 clients: list[WebSocket] = []
 mempool_tx_samples: deque[int] = deque(maxlen=20)  # ~10 min at 30s intervals
 mempool_activity: dict = {"status": "calibrating", "deviation_pct": None, "baseline": None}
 cached_stats: dict | None = None
+cached_news: list[dict] = []
 
 zmq_ctx = zmq.asyncio.Context()
 
@@ -196,11 +202,34 @@ async def listen_blocks() -> None:
             await asyncio.sleep(5)
 
 
+async def sample_news() -> None:
+    global cached_news
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(NEWS_RSS_URL)
+            root = ET.fromstring(resp.text)
+            items = [
+                {"title": (item.findtext("title") or "").strip(),
+                 "link":  (item.findtext("link")  or "").strip()}
+                for item in root.findall(".//item")[:5]
+                if (item.findtext("title") or "").strip()
+            ]
+            if items and items != cached_news:
+                cached_news = items
+                await broadcast({"type": "news_update", "items": cached_news})
+                print(f"[NEWS] {len(cached_news)} headlines updated")
+        except Exception as e:
+            print(f"[NEWS] fetch failed: {e}")
+        await asyncio.sleep(NEWS_FETCH_INTERVAL)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     asyncio.create_task(listen_txs())
     asyncio.create_task(listen_blocks())
     asyncio.create_task(sample_stats())
+    asyncio.create_task(sample_news())
     yield
 
 
@@ -230,6 +259,8 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     await ws.accept()
     clients.append(ws)
     print(f"[WS] Client connected ({len(clients)} total)")
+    if cached_news:
+        await ws.send_json({"type": "news_update", "items": cached_news})
     try:
         while True:
             await ws.receive_text()

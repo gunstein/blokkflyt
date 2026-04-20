@@ -274,6 +274,7 @@ function connectWebSocket(): void {
     if (msg.type === "tx_seen") addTx(msg.txid, msg.fee_rate, msg.vsize, msg.amount_btc);
     else if (msg.type === "block_seen") onBlockSeen(msg.confirmed_txids ?? [], msg.size_kb ?? 0, msg.ntx ?? 0, msg.total_btc ?? 0, msg.height ?? 0, msg.time ?? 0);
     else if (msg.type === "stats_update") updateHud(msg);
+    else if (msg.type === "news_update") updateNewsTicker(msg.items);
   };
   ws.onclose = () => setTimeout(connectWebSocket, 3000);
 }
@@ -379,4 +380,36 @@ async function fetchStats(): Promise<void> {
 }
 
 setInterval(updateBlockAge, 1000);
+
+// --- news ticker ---
+
+let newsItems: { title: string; link: string }[] = [];
+let newsIndex = 0;
+let newsEl: HTMLElement | null = null;
+
+function updateNewsTicker(items: { title: string; link: string }[]): void {
+  newsItems = items;
+  newsIndex = 0;
+  renderNewsTicker();
+}
+
+function renderNewsTicker(): void {
+  const container = document.getElementById("news-ticker");
+  if (!container || newsItems.length === 0) return;
+  container.innerHTML = "";
+  const div = document.createElement("div");
+  div.className = "news-item visible";
+  div.textContent = newsItems[newsIndex].title;
+  container.appendChild(div);
+  newsEl = div;
+}
+
+setInterval(() => {
+  if (newsItems.length === 0) return;
+  newsIndex = (newsIndex + 1) % newsItems.length;
+  if (newsEl) newsEl.classList.remove("visible");
+  setTimeout(() => {
+    renderNewsTicker();
+  }, 650);
+}, 8000);
 
