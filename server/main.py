@@ -24,6 +24,7 @@ mempool: dict[str, dict] = {}
 clients: list[WebSocket] = []
 mempool_tx_samples: deque[int] = deque(maxlen=20)  # ~10 min at 30s intervals
 mempool_activity: dict = {"status": "calibrating", "deviation_pct": None, "baseline": None}
+cached_stats: dict | None = None
 
 zmq_ctx = zmq.asyncio.Context()
 
@@ -78,15 +79,38 @@ def _compute_activity(current: int, samples: deque[int]) -> dict:
     return {"status": status, "deviation_pct": deviation_pct, "baseline": baseline}
 
 
-async def sample_mempool_activity() -> None:
+async def sample_stats() -> None:
+    global cached_stats
     while True:
         try:
-            info = await asyncio.to_thread(lambda: rpc().getmempoolinfo())
-            count = info.get("size", 0)
+            chain_info, mempool_info, network_info = await asyncio.gather(
+                asyncio.to_thread(lambda: rpc().getblockchaininfo()),
+                asyncio.to_thread(lambda: rpc().getmempoolinfo()),
+                asyncio.to_thread(lambda: rpc().getnetworkinfo()),
+            )
+            best_hash = chain_info.get("bestblockhash", "")
+            best_block = await asyncio.to_thread(lambda: rpc().getblockheader(best_hash))
+            difficulty = chain_info.get("difficulty", 0)
+            hashrate_eh = round(float(str(difficulty)) * (2 ** 32) / 600 / 1e18, 2)
+
+            count = mempool_info.get("size", 0)
             mempool_tx_samples.append(count)
             mempool_activity.update(_compute_activity(count, mempool_tx_samples))
+
+            cached_stats = {
+                "block_height": chain_info.get("blocks", 0),
+                "best_block_hash": best_hash,
+                "best_block_time": best_block.get("time", 0),
+                "mempool_tx_count": count,
+                "mempool_size_mb": round(mempool_info.get("bytes", 0) / 1e6, 2),
+                "mempool_median_fee": _median_fee_rate(),
+                "peers": network_info.get("connections", 0),
+                "difficulty": round(float(str(difficulty)) / 1e12, 2),
+                "hashrate_eh": hashrate_eh,
+                "activity": dict(mempool_activity),
+            }
         except Exception as e:
-            print(f"[ACTIVITY] sample failed: {e}")
+            print(f"[STATS] sample failed: {e}")
         await asyncio.sleep(30)
 
 
@@ -167,7 +191,7 @@ async def listen_blocks() -> None:
 async def lifespan(app: FastAPI):
     asyncio.create_task(listen_txs())
     asyncio.create_task(listen_blocks())
-    asyncio.create_task(sample_mempool_activity())
+    asyncio.create_task(sample_stats())
     yield
 
 
@@ -187,33 +211,9 @@ async def snapshot() -> JSONResponse:
 
 @app.get("/stats")
 async def stats() -> JSONResponse:
-    try:
-        chain_info, mempool_info, network_info = await asyncio.gather(
-            asyncio.to_thread(lambda: rpc().getblockchaininfo()),
-            asyncio.to_thread(lambda: rpc().getmempoolinfo()),
-            asyncio.to_thread(lambda: rpc().getnetworkinfo()),
-        )
-        best_hash = chain_info.get("bestblockhash", "")
-        best_block = await asyncio.to_thread(lambda: rpc().getblockheader(best_hash))
-        difficulty = chain_info.get("difficulty", 0)
-        # derive estimated hashrate from difficulty: hashrate ≈ difficulty * 2^32 / 600
-        hashrate_eh = round(float(str(difficulty)) * (2 ** 32) / 600 / 1e18, 2)
-        return JSONResponse({
-            "block_height": chain_info.get("blocks", 0),
-            "best_block_hash": best_hash,
-            "best_block_time": best_block.get("time", 0),
-            "mempool_tx_count": mempool_info.get("size", 0),
-            "mempool_size_mb": round(mempool_info.get("bytes", 0) / 1e6, 2),
-            "mempool_median_fee": _median_fee_rate(),
-            "peers": network_info.get("connections", 0),
-            "difficulty": round(float(str(difficulty)) / 1e12, 2),
-            "hashrate_eh": hashrate_eh,
-            "activity": mempool_activity,
-        })
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return JSONResponse({"error": str(e)}, status_code=500)
+    if cached_stats is None:
+        return JSONResponse({"error": "stats not yet available"}, status_code=503)
+    return JSONResponse(cached_stats)
 
 
 @app.websocket("/ws")
