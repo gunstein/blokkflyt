@@ -99,9 +99,10 @@ async def get_block_info(block_hash: str) -> dict:
             "size_kb": size_kb,
             "total_btc": round(total_btc, 2),
             "height": block.get("height", 0),
+            "time": block.get("time", 0),
         }
     except Exception:
-        return {"confirmed_txids": [], "ntx": 0, "size_kb": 0, "total_btc": 0, "height": 0}
+        return {"confirmed_txids": [], "ntx": 0, "size_kb": 0, "total_btc": 0, "height": 0, "time": 0}
 
 
 async def listen_blocks() -> None:

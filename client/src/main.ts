@@ -135,28 +135,36 @@ function stateColor(state: TxState): number {
   return 0x4488ff;                            // blue — in mempool
 }
 
-function vsizeRadius(vsize: number | null): number {
-  if (vsize === null) return 3;
-  if (vsize < 200)   return 2.5;
-  if (vsize < 500)   return 4;
-  if (vsize < 1000)  return 6;
-  return 9;
+function nodeRadius(amountBtc: number | null): number {
+  if (amountBtc === null) return 3;
+  if (amountBtc >= 100)  return 18;
+  if (amountBtc >= 10)   return 13;
+  if (amountBtc >= 1)    return 9;
+  if (amountBtc >= 0.1)  return 6;
+  if (amountBtc >= 0.01) return 4;
+  return 2.5;
 }
 
-function amountAlpha(amountBtc: number | null): number {
-  if (amountBtc === null) return 0.6;
-  if (amountBtc < 0.01)  return 0.4;
-  if (amountBtc < 0.1)   return 0.6;
-  if (amountBtc < 1)     return 0.8;
+function vsizeAlpha(vsize: number | null): number {
+  if (vsize === null)    return 0.7;
+  if (vsize >= 10000)    return 0.3;
+  if (vsize >= 1000)     return 0.5;
+  if (vsize >= 500)      return 0.7;
+  if (vsize >= 200)      return 0.85;
   return 1.0;
 }
 
 function drawNode(node: TxNode): void {
-  const radius = vsizeRadius(node.vsize);
-  const alpha = amountAlpha(node.amountBtc);
+  const radius = nodeRadius(node.amountBtc);
+  const alpha = vsizeAlpha(node.vsize);
   const color = stateColor(node.state);
   node.gfx.clear();
-  node.gfx.circle(0, 0, radius).fill({ color, alpha });
+  if (node.state === "high_fee") {
+    node.gfx.circle(0, 0, radius).fill({ color, alpha });
+    node.gfx.circle(0, 0, radius).stroke({ color: 0x4488ff, width: 1.5, alpha: 0.7 });
+  } else {
+    node.gfx.circle(0, 0, radius).fill({ color, alpha });
+  }
 }
 
 function addTx(txid: string, feeRate: number | null, vsize: number | null, amountBtc: number | null, initialState: TxState = "new"): void {
@@ -171,11 +179,21 @@ function addTx(txid: string, feeRate: number | null, vsize: number | null, amoun
 
   const angle = Math.random() * Math.PI * 2;
   const speed = 0.2 + Math.random() * 0.3;
-  const radius = vsizeRadius(vsize);
-  const alpha = amountAlpha(amountBtc);
+  const radius = nodeRadius(amountBtc);
+  const alpha = vsizeAlpha(vsize);
 
   const gfx = new Graphics();
   gfx.circle(0, 0, radius).fill({ color: stateColor(initialState), alpha });
+
+  if (amountBtc !== null && amountBtc >= 1) {
+    const label = new Text({
+      text: "₿",
+      style: new TextStyle({ fill: 0xffffff, fontSize: Math.max(8, radius * 1.1), fontFamily: "monospace", fontWeight: "bold" }),
+    });
+    label.anchor.set(0.5, 0.5);
+    gfx.addChild(label);
+  }
+
   gfx.x = centerX();
   gfx.y = centerY();
   app.stage.addChild(gfx);
@@ -215,10 +233,11 @@ function flashAndClear(txids: string[]): void {
   }
 }
 
-function onBlockSeen(confirmedTxids: string[], sizeKb: number, ntx: number, totalBtc: number, height: number): void {
+function onBlockSeen(confirmedTxids: string[], sizeKb: number, ntx: number, totalBtc: number, height: number, time: number): void {
   addBlockSegment(sizeKb, ntx, totalBtc, height);
   flashAndClear(confirmedTxids);
   updateLatestBlock(ntx, sizeKb);
+  if (time > 0) lastBlockTime = time;
 }
 
 // --- animation loop ---
@@ -290,7 +309,7 @@ function connectWebSocket(): void {
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === "tx_seen") addTx(msg.txid, msg.fee_rate, msg.vsize, msg.amount_btc);
-    else if (msg.type === "block_seen") onBlockSeen(msg.confirmed_txids ?? [], msg.size_kb ?? 0, msg.ntx ?? 0, msg.total_btc ?? 0, msg.height ?? 0);
+    else if (msg.type === "block_seen") onBlockSeen(msg.confirmed_txids ?? [], msg.size_kb ?? 0, msg.ntx ?? 0, msg.total_btc ?? 0, msg.height ?? 0, msg.time ?? 0);
   };
   ws.onclose = () => setTimeout(connectWebSocket, 3000);
 }
@@ -376,7 +395,7 @@ setInterval(updateBlockAge, 1000);
 
 // press 'b' to simulate a block (dev only)
 window.addEventListener("keydown", (e) => {
-  if (e.key === "b") onBlockSeen([], 800, 2000, 45.5, 945954);
+  if (e.key === "b") onBlockSeen([], 800, 2000, 45.5, 945954, 0);
 });
 
-(window as any).simulateBlock = (sizeKb: number, ntx = 2000, totalBtc = 45.5, height = 945954) => onBlockSeen([], sizeKb, ntx, totalBtc, height);
+(window as any).simulateBlock = (sizeKb: number, ntx = 2000, totalBtc = 45.5, height = 945954) => onBlockSeen([], sizeKb, ntx, totalBtc, height, 0);

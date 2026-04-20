@@ -21,9 +21,10 @@ Full end-to-end flow with rich visualization:
 
 ### Client (`client/src/main.ts`)
 - Transaction nodes rendered as circles:
-  - **Color** = fee rate (blue=low, green=medium, orange=high, red=very high)
-  - **Size** = vsize (transaction complexity)
-  - **Alpha** = amount in BTC (brighter = more bitcoin)
+  - **Color** = fee rate (purple=new, blue=mempool, orange=high fee, yellow=selected)
+  - **Size** = BTC amount (larger = more bitcoin)
+  - **Alpha/brightness** = vsize (dimmer = more complex/heavy transaction)
+  - **₿ icon** shown on transactions with ≥1 BTC
 - Rolling window of 500 nodes — oldest removed when full
 - Mempool ring drawn at 85% of screen radius
 - Block segments along the ring:
@@ -39,11 +40,11 @@ Full end-to-end flow with rich visualization:
 
 ## ✅ Last completed
 
-- Added vsize and amount_btc to tx events
+- Visual encoding reworked: size = BTC amount, brightness = vsize complexity
+- ₿ icon added to nodes with ≥1 BTC
+- HUD overlay: block height, mempool stats, peers, hashrate, latest block info
 - Block segments with variable stroke width based on block size
-- Correct mempool clearing — only confirmed txids removed on block
-- Transaction nodes animate toward mined block segment (not random explosion)
-- Block segments fade over 1 hour, max 12 visible
+- Confirmed transactions animate toward mined block segment
 
 ---
 
