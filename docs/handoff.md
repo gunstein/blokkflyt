@@ -16,9 +16,15 @@ Full end-to-end flow with rich visualization:
 - Per transaction: fetches `fee_rate`, `vsize`, `amount_btc` via RPC (`getmempoolentry` + `getrawtransaction`)
 - Per block: fetches `confirmed_txids`, `ntx`, `size_kb`, `time`, `height` via RPC (`getblock` verbosity 2)
 - Only confirmed txids are removed from mempool on block
-- REST `GET /snapshot` returns full mempool with all tx fields
-- REST `GET /stats` returns block height, mempool stats, peers, hashrate, difficulty
-- WebSocket `/ws` broadcasts live `tx_seen` and `block_seen` events to all clients
+- Background task `sample_stats()` runs every 30s and immediately on startup:
+  - Fetches chain info, mempool info, network info via RPC
+  - Computes mempool activity status from rolling window of 20 samples (~10 min)
+  - Caches result in `cached_stats` and broadcasts `stats_update` to all WS clients
+- Block arrival triggers immediate `_refresh_stats()` so HUD updates without delay
+- REST `GET /snapshot` — initial mempool state for connecting clients
+- REST `GET /stats` — returns `cached_stats` for initial page load only
+- WebSocket `/ws` broadcasts: `tx_seen`, `block_seen`, `stats_update`
+- All data is in-memory (appropriate — mempool is ephemeral and bounded by Bitcoin Core)
 
 ### Client (`client/src/main.ts` + `client/src/utils.ts`)
 - Pure functions (visual encoding, time formatting) extracted to `utils.ts`
@@ -36,26 +42,26 @@ Full end-to-end flow with rich visualization:
   - Fade to near-invisible over 1 hour
   - Up to 12 recent blocks shown
 - On block: confirmed transactions animate toward the new segment; rest stay in mempool
-- `block_seen` includes block timestamp — "Last Block" age resets immediately
-- HUD overlay: block height, last block age, mempool stats, peers, hashrate, difficulty, latest block info
+- HUD overlay: block height, last block age, mempool stats, peers, hashrate, difficulty, latest block info, activity status
+- Stats updated via `stats_update` WebSocket message — no polling
+- `fetchStats()` used for initial load only
 - `simulateBlock(sizeKb)` available in browser console for testing
 - Press `b` to simulate an 800 KB block
 
 ### Tests
 - `client/src/utils.test.ts` — 26 vitest tests covering visual encoding thresholds (`npm test`)
-- `server/test_main.py` — 7 pytest tests covering `_median_fee_rate` edge cases (`python3 -m pytest test_main.py -v`)
+- `server/test_main.py` — 13 pytest tests covering `_median_fee_rate` and `_compute_activity` (`python3 -m pytest test_main.py -v`)
 
 ---
 
 ## ✅ Last completed
 
+- Stats pushed via WebSocket (`stats_update`) instead of client polling
+- `_refresh_stats()` called immediately on block arrival — HUD always current
+- `sample_stats()` runs immediately on startup — no 30s wait for first data
+- Server-side mempool activity analysis (calibrating/normal/busy/congested/quiet)
 - Unit tests added for all pure functions on client and server
-- Pure functions extracted to `utils.ts` to enable testing
-- ZMQ listeners now reconnect automatically on crash
-- `addTx` delegates drawing to `drawNode` (no duplicated draw logic)
-- High fee nodes get blue stroke to indicate mempool membership
-- Visual encoding: size = BTC amount, brightness = vsize complexity
-- `block_seen` includes block timestamp so Last Block age resets immediately
+- ZMQ listeners reconnect automatically on crash
 
 ---
 
@@ -69,4 +75,4 @@ Nothing.
 
 - Tooltip on hover showing tx details (txid, fee rate, amount, vsize)
 - More dramatic block animation (glow/flash on new segment)
-- More rectangular block segments (like reference image)
+- Historical data persistence (SQLite) for fee rate trends and congestion history over time

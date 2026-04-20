@@ -66,6 +66,22 @@ Agents and developers must read this before changing the architecture.
 
 ---
 
+## 2026-04-20 — Stats pushed via WebSocket, not polled
+
+**Decision:** Server broadcasts `stats_update` over WebSocket after each stats refresh. Clients do not poll `/stats` — they only call it once on initial load.
+
+**Why:** With multiple clients each polling every 30s, the server would make N × 4 RPC calls per interval. A single server-side background task does the work once and pushes the result to all clients. Also ensures HUD updates immediately on block arrival rather than waiting up to 30s.
+
+---
+
+## 2026-04-20 — In-memory state is sufficient (no database needed)
+
+**Decision:** Keep all server state in-memory. No SQLite or other persistence.
+
+**Why:** The mempool is ephemeral by nature — it self-clears as blocks are mined, and is naturally bounded by Bitcoin Core's own mempool limits (~30MB worst case). Activity history is 20 integers. On restart, a fresh snapshot is fetched from Bitcoin Core. A database would add complexity with no benefit for the current feature set. Revisit if historical trend analysis is added.
+
+---
+
 ## 2026-04-20 — ZMQ listeners with automatic reconnect
 
 **Decision:** Both `listen_txs` and `listen_blocks` wrap their inner loop in a try/except that sleeps 5 seconds and retries on any exception.
