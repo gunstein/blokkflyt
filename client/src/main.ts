@@ -273,14 +273,14 @@ function connectWebSocket(): void {
     const msg = JSON.parse(event.data);
     if (msg.type === "tx_seen") addTx(msg.txid, msg.fee_rate, msg.vsize, msg.amount_btc);
     else if (msg.type === "block_seen") onBlockSeen(msg.confirmed_txids ?? [], msg.size_kb ?? 0, msg.ntx ?? 0, msg.total_btc ?? 0, msg.height ?? 0, msg.time ?? 0);
+    else if (msg.type === "stats_update") updateHud(msg);
   };
   ws.onclose = () => setTimeout(connectWebSocket, 3000);
 }
 
 fetchSnapshot();
 connectWebSocket();
-fetchStats();
-setInterval(fetchStats, 30000);
+fetchStats(); // initial load only — subsequent updates arrive via stats_update WebSocket message
 
 // --- HUD ---
 

@@ -79,36 +79,41 @@ def _compute_activity(current: int, samples: deque[int]) -> dict:
     return {"status": status, "deviation_pct": deviation_pct, "baseline": baseline}
 
 
-async def sample_stats() -> None:
+async def _refresh_stats() -> None:
     global cached_stats
+    chain_info, mempool_info, network_info = await asyncio.gather(
+        asyncio.to_thread(lambda: rpc().getblockchaininfo()),
+        asyncio.to_thread(lambda: rpc().getmempoolinfo()),
+        asyncio.to_thread(lambda: rpc().getnetworkinfo()),
+    )
+    best_hash = chain_info.get("bestblockhash", "")
+    best_block = await asyncio.to_thread(lambda: rpc().getblockheader(best_hash))
+    difficulty = chain_info.get("difficulty", 0)
+    hashrate_eh = round(float(str(difficulty)) * (2 ** 32) / 600 / 1e18, 2)
+
+    count = mempool_info.get("size", 0)
+    mempool_tx_samples.append(count)
+    mempool_activity.update(_compute_activity(count, mempool_tx_samples))
+
+    cached_stats = {
+        "block_height": chain_info.get("blocks", 0),
+        "best_block_hash": best_hash,
+        "best_block_time": best_block.get("time", 0),
+        "mempool_tx_count": count,
+        "mempool_size_mb": round(mempool_info.get("bytes", 0) / 1e6, 2),
+        "mempool_median_fee": _median_fee_rate(),
+        "peers": network_info.get("connections", 0),
+        "difficulty": round(float(str(difficulty)) / 1e12, 2),
+        "hashrate_eh": hashrate_eh,
+        "activity": dict(mempool_activity),
+    }
+    await broadcast({"type": "stats_update", **cached_stats})
+
+
+async def sample_stats() -> None:
     while True:
         try:
-            chain_info, mempool_info, network_info = await asyncio.gather(
-                asyncio.to_thread(lambda: rpc().getblockchaininfo()),
-                asyncio.to_thread(lambda: rpc().getmempoolinfo()),
-                asyncio.to_thread(lambda: rpc().getnetworkinfo()),
-            )
-            best_hash = chain_info.get("bestblockhash", "")
-            best_block = await asyncio.to_thread(lambda: rpc().getblockheader(best_hash))
-            difficulty = chain_info.get("difficulty", 0)
-            hashrate_eh = round(float(str(difficulty)) * (2 ** 32) / 600 / 1e18, 2)
-
-            count = mempool_info.get("size", 0)
-            mempool_tx_samples.append(count)
-            mempool_activity.update(_compute_activity(count, mempool_tx_samples))
-
-            cached_stats = {
-                "block_height": chain_info.get("blocks", 0),
-                "best_block_hash": best_hash,
-                "best_block_time": best_block.get("time", 0),
-                "mempool_tx_count": count,
-                "mempool_size_mb": round(mempool_info.get("bytes", 0) / 1e6, 2),
-                "mempool_median_fee": _median_fee_rate(),
-                "peers": network_info.get("connections", 0),
-                "difficulty": round(float(str(difficulty)) / 1e12, 2),
-                "hashrate_eh": hashrate_eh,
-                "activity": dict(mempool_activity),
-            }
+            await _refresh_stats()
         except Exception as e:
             print(f"[STATS] sample failed: {e}")
         await asyncio.sleep(30)
@@ -182,6 +187,10 @@ async def listen_blocks() -> None:
                     mempool.pop(txid, None)
                 print(f"[BLOCK] ntx={info['ntx']} size={info['size_kb']}KB btc={info['total_btc']}")
                 await broadcast({"type": "block_seen", "hash": block_hash, **info})
+                try:
+                    await _refresh_stats()
+                except Exception as e:
+                    print(f"[STATS] post-block refresh failed: {e}")
         except Exception as e:
             print(f"[ZMQ] block listener crashed: {e}, reconnecting in 5s...")
             await asyncio.sleep(5)
