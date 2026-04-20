@@ -114,6 +114,8 @@
       }
 
       .hud-value.orange { color: #f7931a; }
+      .hud-value.red    { color: #ff4444; }
+      .hud-value.blue   { color: #4488ff; }
       .hud-mono {
         font-size: 10px;
         color: #aabbcc;
@@ -148,6 +150,12 @@
         <div class="hud-label">Network</div>
         <div class="hud-row">Hashrate <span id="hashrate">—</span></div>
         <div class="hud-row">Difficulty <span id="difficulty">—</span></div>
+      </div>
+      <div class="hud-block">
+        <div class="hud-label">Activity</div>
+        <div class="hud-value" id="activity-status">—</div>
+        <div class="hud-row" id="activity-detail" style="display:none">Baseline <span id="activity-baseline">—</span></div>
+        <div class="hud-row" id="activity-delta" style="display:none">Δ <span id="activity-pct">—</span></div>
       </div>
     </div>
 

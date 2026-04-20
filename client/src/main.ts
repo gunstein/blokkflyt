@@ -315,6 +315,8 @@ function updateHud(data: Record<string, any>): void {
     (document.getElementById("difficulty")!).textContent =
       data.difficulty + " T";
 
+  if (data.activity) updateActivity(data.activity);
+
   const dotsEl = document.getElementById("peers-dots")!;
   dotsEl.innerHTML = "";
   const count = Math.min(data.peers, 10);
@@ -322,6 +324,36 @@ function updateHud(data: Record<string, any>): void {
     const d = document.createElement("div");
     d.className = "peer-dot";
     dotsEl.appendChild(d);
+  }
+}
+
+const ACTIVITY_COLORS: Record<string, string> = {
+  calibrating: "",
+  normal:      "green",
+  busy:        "orange",
+  congested:   "red",
+  quiet:       "blue",
+};
+
+function updateActivity(activity: { status: string; deviation_pct: number | null; baseline: number | null }): void {
+  const statusEl = document.getElementById("activity-status")!;
+  statusEl.textContent = activity.status.charAt(0).toUpperCase() + activity.status.slice(1);
+  statusEl.className = "hud-value " + (ACTIVITY_COLORS[activity.status] ?? "");
+
+  const detailEl = document.getElementById("activity-detail")!;
+  const deltaEl  = document.getElementById("activity-delta")!;
+
+  if (activity.baseline !== null && activity.deviation_pct !== null) {
+    detailEl.style.display = "";
+    deltaEl.style.display  = "";
+    document.getElementById("activity-baseline")!.textContent =
+      activity.baseline.toLocaleString() + " tx";
+    const sign = activity.deviation_pct > 0 ? "+" : "";
+    document.getElementById("activity-pct")!.textContent =
+      `${sign}${activity.deviation_pct}%`;
+  } else {
+    detailEl.style.display = "none";
+    deltaEl.style.display  = "none";
   }
 }
 

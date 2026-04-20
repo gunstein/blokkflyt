@@ -1,5 +1,6 @@
 import asyncio
 import os
+from collections import deque
 from contextlib import asynccontextmanager
 
 import zmq
@@ -21,6 +22,8 @@ ZMQ_TX_PORT = 28333
 
 mempool: dict[str, dict] = {}
 clients: list[WebSocket] = []
+mempool_tx_samples: deque[int] = deque(maxlen=20)  # ~10 min at 30s intervals
+mempool_activity: dict = {"status": "calibrating", "deviation_pct": None, "baseline": None}
 
 zmq_ctx = zmq.asyncio.Context()
 
@@ -55,6 +58,36 @@ def _median_fee_rate() -> float | None:
     rates.sort()
     mid = len(rates) // 2
     return rates[mid] if len(rates) % 2 else round((rates[mid - 1] + rates[mid]) / 2, 2)
+
+
+def _compute_activity(current: int, samples: deque[int]) -> dict:
+    if len(samples) < 5:
+        return {"status": "calibrating", "deviation_pct": None, "baseline": None}
+    baseline = round(sum(list(samples)[:-1]) / (len(samples) - 1))
+    if baseline == 0:
+        return {"status": "calibrating", "deviation_pct": None, "baseline": None}
+    deviation_pct = round((current - baseline) / baseline * 100)
+    if deviation_pct > 50:
+        status = "congested"
+    elif deviation_pct > 20:
+        status = "busy"
+    elif deviation_pct < -30:
+        status = "quiet"
+    else:
+        status = "normal"
+    return {"status": status, "deviation_pct": deviation_pct, "baseline": baseline}
+
+
+async def sample_mempool_activity() -> None:
+    while True:
+        try:
+            info = await asyncio.to_thread(lambda: rpc().getmempoolinfo())
+            count = info.get("size", 0)
+            mempool_tx_samples.append(count)
+            mempool_activity.update(_compute_activity(count, mempool_tx_samples))
+        except Exception as e:
+            print(f"[ACTIVITY] sample failed: {e}")
+        await asyncio.sleep(30)
 
 
 async def broadcast(event: dict) -> None:
@@ -134,6 +167,7 @@ async def listen_blocks() -> None:
 async def lifespan(app: FastAPI):
     asyncio.create_task(listen_txs())
     asyncio.create_task(listen_blocks())
+    asyncio.create_task(sample_mempool_activity())
     yield
 
 
@@ -174,6 +208,7 @@ async def stats() -> JSONResponse:
             "peers": network_info.get("connections", 0),
             "difficulty": round(float(str(difficulty)) / 1e12, 2),
             "hashrate_eh": hashrate_eh,
+            "activity": mempool_activity,
         })
     except Exception as e:
         import traceback
