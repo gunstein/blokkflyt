@@ -66,6 +66,14 @@ Agents and developers must read this before changing the architecture.
 
 ---
 
+## 2026-04-20 — News fetched server-side and distributed via WebSocket
+
+**Decision:** Server fetches Bitcoin Magazine RSS every 15 minutes and broadcasts headlines to all clients via WebSocket. Clients never fetch RSS directly.
+
+**Why:** RSS feeds block CORS from browsers, so server-side fetching is required. Centralising the fetch means all clients share one HTTP request regardless of how many are connected. New clients receive cached headlines immediately on connect.
+
+---
+
 ## 2026-04-20 — Stats pushed via WebSocket, not polled
 
 **Decision:** Server broadcasts `stats_update` over WebSocket after each stats refresh. Clients do not poll `/stats` — they only call it once on initial load.

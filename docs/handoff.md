@@ -23,7 +23,11 @@ Full end-to-end flow with rich visualization:
 - Block arrival triggers immediate `_refresh_stats()` so HUD updates without delay
 - REST `GET /snapshot` — initial mempool state for connecting clients
 - REST `GET /stats` — returns `cached_stats` for initial page load only
-- WebSocket `/ws` broadcasts: `tx_seen`, `block_seen`, `stats_update`
+- WebSocket `/ws` broadcasts: `tx_seen`, `block_seen`, `stats_update`, `news_update`
+- Background task `sample_news()` fetches Bitcoin Magazine RSS every 15 min via `httpx`:
+  - Caches last 5 headlines
+  - Broadcasts `news_update` to all clients when headlines change
+  - Sends cached headlines to new clients immediately on connect
 - All data is in-memory (appropriate — mempool is ephemeral and bounded by Bitcoin Core)
 
 ### Client (`client/src/main.ts` + `client/src/utils.ts`)
@@ -45,8 +49,7 @@ Full end-to-end flow with rich visualization:
 - HUD overlay: block height, last block age, mempool stats, peers, hashrate, difficulty, latest block info, activity status
 - Stats updated via `stats_update` WebSocket message — no polling
 - `fetchStats()` used for initial load only
-- `simulateBlock(sizeKb)` available in browser console for testing
-- Press `b` to simulate an 800 KB block
+- News ticker above legend: rotating Bitcoin Magazine headlines, one every 8s with fade
 
 ### Tests
 - `client/src/utils.test.ts` — 26 vitest tests covering visual encoding thresholds (`npm test`)
@@ -56,11 +59,12 @@ Full end-to-end flow with rich visualization:
 
 ## ✅ Last completed
 
+- Bitcoin Magazine news ticker via server-side RSS, distributed via WebSocket
 - Stats pushed via WebSocket (`stats_update`) instead of client polling
 - `_refresh_stats()` called immediately on block arrival — HUD always current
 - `sample_stats()` runs immediately on startup — no 30s wait for first data
 - Server-side mempool activity analysis (calibrating/normal/busy/congested/quiet)
-- Unit tests added for all pure functions on client and server
+- Unit tests for all pure functions on client and server
 - ZMQ listeners reconnect automatically on crash
 
 ---
@@ -76,3 +80,4 @@ Nothing.
 - Tooltip on hover showing tx details (txid, fee rate, amount, vsize)
 - More dramatic block animation (glow/flash on new segment)
 - Historical data persistence (SQLite) for fee rate trends and congestion history over time
+- Multiple RSS sources or configurable feed URL
