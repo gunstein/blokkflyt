@@ -48,6 +48,15 @@ async def get_tx_info(txid: str) -> dict:
     return {"fee_rate": fee_rate, "vsize": vsize, "amount_btc": amount_btc}
 
 
+def _median_fee_rate() -> float | None:
+    rates = [tx["fee_rate"] for tx in mempool.values() if tx.get("fee_rate") is not None]
+    if not rates:
+        return None
+    rates.sort()
+    mid = len(rates) // 2
+    return rates[mid] if len(rates) % 2 else round((rates[mid - 1] + rates[mid]) / 2, 2)
+
+
 async def broadcast(event: dict) -> None:
     disconnected = []
     for ws in clients:
@@ -75,14 +84,23 @@ async def listen_txs() -> None:
 
 async def get_block_info(block_hash: str) -> dict:
     try:
-        block = await asyncio.to_thread(lambda: rpc().getblock(block_hash, 1))
+        block = await asyncio.to_thread(lambda: rpc().getblock(block_hash, 2))
+        confirmed_txids = [tx["txid"] for tx in block.get("tx", [])]
+        ntx = block.get("nTx", 0)
+        size_kb = round(block.get("size", 0) / 1024, 1)
+        total_btc = sum(
+            float(vout["value"])
+            for tx in block.get("tx", [])[1:]  # skip coinbase
+            for vout in tx.get("vout", [])
+        )
         return {
-            "confirmed_txids": block.get("tx", []),
-            "ntx": block.get("nTx", 0),
-            "size_kb": round(block.get("size", 0) / 1024, 1),
+            "confirmed_txids": confirmed_txids,
+            "ntx": ntx,
+            "size_kb": size_kb,
+            "total_btc": round(total_btc, 2),
         }
     except Exception:
-        return {"confirmed_txids": [], "ntx": 0, "size_kb": 0}
+        return {"confirmed_txids": [], "ntx": 0, "size_kb": 0, "total_btc": 0}
 
 
 async def listen_blocks() -> None:
@@ -96,6 +114,7 @@ async def listen_blocks() -> None:
         info = await get_block_info(block_hash)
         for txid in info["confirmed_txids"]:
             mempool.pop(txid, None)
+        print(f"[BLOCK] ntx={info['ntx']} size={info['size_kb']}KB btc={info['total_btc']}")
         await broadcast({"type": "block_seen", "hash": block_hash, **info})
 
 
@@ -109,7 +128,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -118,6 +137,29 @@ app.add_middleware(
 @app.get("/snapshot")
 async def snapshot() -> JSONResponse:
     return JSONResponse({"mempool": list(mempool.values())})
+
+
+@app.get("/stats")
+async def stats() -> JSONResponse:
+    try:
+        chain_info, mempool_info, network_info = await asyncio.gather(
+            asyncio.to_thread(lambda: rpc().getblockchaininfo()),
+            asyncio.to_thread(lambda: rpc().getmempoolinfo()),
+            asyncio.to_thread(lambda: rpc().getnetworkinfo()),
+        )
+        best_hash = chain_info.get("bestblockhash", "")
+        best_block = await asyncio.to_thread(lambda: rpc().getblockheader(best_hash))
+        return JSONResponse({
+            "block_height": chain_info.get("blocks", 0),
+            "best_block_hash": best_hash,
+            "best_block_time": best_block.get("time", 0),
+            "mempool_tx_count": mempool_info.get("size", 0),
+            "mempool_size_mb": round(mempool_info.get("bytes", 0) / 1e6, 2),
+            "mempool_median_fee": _median_fee_rate(),
+            "peers": network_info.get("connections", 0),
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.websocket("/ws")

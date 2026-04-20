@@ -7,11 +7,138 @@
     <title>Blokkflyt</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { background: #000; overflow: hidden; }
+      body { background: #000; overflow: hidden; font-family: monospace; }
+
+      #app { position: fixed; inset: 0; }
+
+      .hud {
+        position: fixed;
+        top: 24px;
+        color: #fff;
+        width: 200px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        pointer-events: none;
+      }
+
+      #hud-left  { left: 24px; }
+
+      .hud-block {
+        background: rgba(10, 15, 25, 0.75);
+        border: 1px solid #1e2d3d;
+        border-radius: 6px;
+        padding: 12px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .hud-label {
+        font-size: 10px;
+        color: #556677;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .hud-value {
+        font-size: 22px;
+        font-weight: bold;
+        color: #fff;
+      }
+
+      .hud-value.purple { color: #aa66ff; }
+      .hud-value.green  { color: #44cc88; }
+
+      .hud-row {
+        font-size: 12px;
+        color: #aabbcc;
+        display: flex;
+        justify-content: space-between;
+      }
+
+      .hud-row span { color: #fff; }
+
+      #legend {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 24px;
+        pointer-events: none;
+      }
+
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 12px;
+        color: #aabbcc;
+        white-space: nowrap;
+      }
+
+      .legend-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
+      .peers-dots {
+        display: flex;
+        gap: 4px;
+        margin-top: 2px;
+      }
+
+      .peer-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #44cc88;
+      }
     </style>
   </head>
   <body>
     <div id="app"></div>
+
+    <div class="hud" id="hud-left">
+      <div class="hud-block">
+        <div class="hud-label">Block Height</div>
+        <div class="hud-value" id="block-height">—</div>
+      </div>
+      <div class="hud-block">
+        <div class="hud-label">Last Block</div>
+        <div class="hud-value" id="last-block-age">—</div>
+      </div>
+      <div class="hud-block">
+        <div class="hud-label">Mempool</div>
+        <div class="hud-value purple" id="mempool-tx">—</div>
+        <div class="hud-row">Size <span id="mempool-mb">—</span></div>
+        <div class="hud-row">Median fee <span id="mempool-fee">—</span></div>
+      </div>
+      <div class="hud-block">
+        <div class="hud-label">Peers</div>
+        <div class="hud-value green" id="peers-count">—</div>
+        <div class="peers-dots" id="peers-dots"></div>
+      </div>
+    </div>
+
+    <div id="legend">
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#aa66ff"></div> New Transaction
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#4488ff"></div> In Mempool
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#ffdd00"></div> Selected for Block
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#aaaaaa"></div> Confirmed in Block
+      </div>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -1,11 +1,15 @@
-import { Application, Graphics } from "pixi.js";
+import { Application, Graphics, Text, TextStyle } from "pixi.js";
+
 
 const API_BASE = "http://localhost:8000";
 const WS_URL = "ws://localhost:8000/ws";
 
 const MAX_NODES = 500;
 const MAX_BLOCKS = 12;
-const BLOCK_FADE_DURATION = 3600000; // ms until fully faded (1 hour)
+const BLOCK_FADE_DURATION = 3600000;
+const NEW_TX_DURATION = 3000; // ms a tx stays "new" (purple)
+
+type TxState = "new" | "mempool" | "selected";
 
 interface TxNode {
   txid: string;
@@ -15,10 +19,15 @@ interface TxNode {
   vx: number;
   vy: number;
   firing: boolean;
+  state: TxState;
+  createdAt: number;
+  vsize: number | null;
+  amountBtc: number | null;
 }
 
 interface BlockSegment {
   gfx: Graphics;
+  label: Text;
   createdAt: number;
 }
 
@@ -53,14 +62,14 @@ window.addEventListener("resize", drawRing);
 // --- block segments ---
 
 function blockStrokeWidth(sizeKb: number): number {
-  if (sizeKb <= 0)    return 6;
-  if (sizeKb < 200)   return 4;
-  if (sizeKb < 600)   return 8;
-  if (sizeKb < 900)   return 12;
+  if (sizeKb <= 0)  return 6;
+  if (sizeKb < 200) return 4;
+  if (sizeKb < 600) return 8;
+  if (sizeKb < 900) return 12;
   return 16;
 }
 
-function addBlockSegment(sizeKb: number): void {
+function addBlockSegment(sizeKb: number, ntx: number, totalBtc: number): void {
   const cx = centerX();
   const cy = centerY();
   const r = ringRadius();
@@ -72,41 +81,56 @@ function addBlockSegment(sizeKb: number): void {
 
   const gfx = new Graphics();
   gfx.arc(cx, cy, r, angle - arcWidth / 2, angle + arcWidth / 2)
-    .stroke({ color: 0xf7931a, width: strokeWidth, alpha: 1 });
+    .stroke({ color: 0xaaaaaa, width: strokeWidth, alpha: 1 });
   app.stage.addChild(gfx);
 
-  blockSegments.push({ gfx, createdAt: Date.now() });
+  const labelStyle = new TextStyle({ fill: 0xffffff, fontSize: 11, fontFamily: "monospace", align: "center" });
+  const labelText = ntx > 0 ? `${ntx} tx\n${totalBtc} BTC` : `${sizeKb} KB`;
+  const label = new Text({ text: labelText, style: labelStyle });
+  label.anchor.set(0.5, 0.5);
+  label.x = cx + Math.cos(angle) * (r + 28);
+  label.y = cy + Math.sin(angle) * (r + 28);
+  app.stage.addChild(label);
+
+  blockSegments.push({ gfx, label, createdAt: Date.now() });
 
   if (blockSegments.length > MAX_BLOCKS) {
     const old = blockSegments.shift()!;
     old.gfx.destroy();
+    old.label.destroy();
   }
 }
 
 // --- tx nodes ---
 
-function feeColor(feeRate: number | null): number {
-  if (feeRate === null) return 0x6666ff;
-  if (feeRate < 2)   return 0x8888ff;   // blue — very low
-  if (feeRate < 5)   return 0x44cc88;   // green — low
-  if (feeRate < 15)  return 0xf7931a;   // orange — medium
-  return 0xff3333;                       // red — high
+function stateColor(state: TxState): number {
+  if (state === "new")      return 0xaa66ff; // purple
+  if (state === "selected") return 0xffdd00; // yellow
+  return 0x4488ff;                            // blue — in mempool
 }
 
 function vsizeRadius(vsize: number | null): number {
   if (vsize === null) return 3;
-  if (vsize < 200)  return 2.5;
-  if (vsize < 500)  return 4;
-  if (vsize < 1000) return 6;
+  if (vsize < 200)   return 2.5;
+  if (vsize < 500)   return 4;
+  if (vsize < 1000)  return 6;
   return 9;
 }
 
 function amountAlpha(amountBtc: number | null): number {
   if (amountBtc === null) return 0.6;
-  if (amountBtc < 0.01) return 0.4;
-  if (amountBtc < 0.1)  return 0.6;
-  if (amountBtc < 1)    return 0.8;
+  if (amountBtc < 0.01)  return 0.4;
+  if (amountBtc < 0.1)   return 0.6;
+  if (amountBtc < 1)     return 0.8;
   return 1.0;
+}
+
+function drawNode(node: TxNode): void {
+  const radius = vsizeRadius(node.vsize);
+  const alpha = amountAlpha(node.amountBtc);
+  const color = stateColor(node.state);
+  node.gfx.clear();
+  node.gfx.circle(0, 0, radius).fill({ color, alpha });
 }
 
 function addTx(txid: string, feeRate: number | null, vsize: number | null, amountBtc: number | null): void {
@@ -121,18 +145,21 @@ function addTx(txid: string, feeRate: number | null, vsize: number | null, amoun
 
   const angle = Math.random() * Math.PI * 2;
   const speed = 0.2 + Math.random() * 0.3;
-  const color = feeColor(feeRate);
   const radius = vsizeRadius(vsize);
   const alpha = amountAlpha(amountBtc);
 
   const gfx = new Graphics();
-  gfx.circle(0, 0, radius).fill({ color, alpha });
+  gfx.circle(0, 0, radius).fill({ color: stateColor("new"), alpha });
   gfx.x = centerX();
   gfx.y = centerY();
   app.stage.addChild(gfx);
 
-  nodes.set(txid, { txid, gfx, x: centerX(), y: centerY(),
-    vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, firing: false });
+  nodes.set(txid, {
+    txid, gfx, x: centerX(), y: centerY(),
+    vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+    firing: false, state: "new", createdAt: Date.now(),
+    vsize, amountBtc,
+  });
 }
 
 function flashAndClear(txids: string[]): void {
@@ -157,11 +184,13 @@ function flashAndClear(txids: string[]): void {
     node.vx = (dx / dist) * speed;
     node.vy = (dy / dist) * speed;
     node.firing = true;
+    node.state = "selected";
+    drawNode(node);
   }
 }
 
-function onBlockSeen(confirmedTxids: string[], sizeKb: number): void {
-  addBlockSegment(sizeKb);
+function onBlockSeen(confirmedTxids: string[], sizeKb: number, ntx: number, totalBtc: number): void {
+  addBlockSegment(sizeKb, ntx, totalBtc);
   flashAndClear(confirmedTxids);
 }
 
@@ -171,6 +200,7 @@ app.ticker.add(() => {
   const cx = centerX();
   const cy = centerY();
   const maxRadius = ringRadius();
+  const now = Date.now();
 
   const toRemove: string[] = [];
   for (const [txid, node] of nodes.entries()) {
@@ -191,6 +221,14 @@ app.ticker.add(() => {
     if (!node.firing && dist >= maxRadius) {
       node.x = cx + (dx / dist) * maxRadius;
       node.y = cy + (dy / dist) * maxRadius;
+      node.vx = 0;
+      node.vy = 0;
+    }
+
+    // transition from new → mempool after NEW_TX_DURATION
+    if (node.state === "new" && now - node.createdAt > NEW_TX_DURATION) {
+      node.state = "mempool";
+      drawNode(node);
     }
 
     node.gfx.x = node.x;
@@ -199,11 +237,11 @@ app.ticker.add(() => {
   for (const txid of toRemove) nodes.delete(txid);
 
   // fade block segments over time
-  const now = Date.now();
   for (const seg of blockSegments) {
     const age = now - seg.createdAt;
     const alpha = Math.max(0.08, 1 - age / BLOCK_FADE_DURATION);
     seg.gfx.alpha = alpha;
+    seg.label.alpha = alpha;
   }
 });
 
@@ -222,17 +260,70 @@ function connectWebSocket(): void {
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === "tx_seen") addTx(msg.txid, msg.fee_rate, msg.vsize, msg.amount_btc);
-    else if (msg.type === "block_seen") onBlockSeen(msg.confirmed_txids ?? [], msg.size_kb ?? 0);
+    else if (msg.type === "block_seen") onBlockSeen(msg.confirmed_txids ?? [], msg.size_kb ?? 0, msg.ntx ?? 0, msg.total_btc ?? 0);
   };
   ws.onclose = () => setTimeout(connectWebSocket, 3000);
 }
 
 fetchSnapshot();
 connectWebSocket();
+fetchStats();
+setInterval(fetchStats, 30000);
+
+// --- HUD ---
+
+function timeAgo(unixTs: number): string {
+  const secs = Math.floor(Date.now() / 1000) - unixTs;
+  if (secs < 60)  return `${secs}s ago`;
+  const mins = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${mins}m ${s}s ago`;
+}
+
+let lastBlockTime = 0;
+
+function updateHud(data: Record<string, number>): void {
+  lastBlockTime = data.best_block_time;
+  (document.getElementById("block-height")!).textContent =
+    data.block_height.toLocaleString();
+  (document.getElementById("mempool-tx")!).textContent =
+    data.mempool_tx_count.toLocaleString() + " tx";
+  (document.getElementById("mempool-mb")!).textContent =
+    data.mempool_size_mb + " MB";
+  (document.getElementById("mempool-fee")!).textContent =
+    data.mempool_median_fee + " sat/vB";
+  (document.getElementById("peers-count")!).textContent =
+    String(data.peers);
+
+  const dotsEl = document.getElementById("peers-dots")!;
+  dotsEl.innerHTML = "";
+  const count = Math.min(data.peers, 10);
+  for (let i = 0; i < count; i++) {
+    const d = document.createElement("div");
+    d.className = "peer-dot";
+    dotsEl.appendChild(d);
+  }
+}
+
+function updateBlockAge(): void {
+  if (!lastBlockTime) return;
+  const el = document.getElementById("last-block-age");
+  if (el) el.textContent = timeAgo(lastBlockTime);
+}
+
+async function fetchStats(): Promise<void> {
+  try {
+    const res = await fetch(`${API_BASE}/stats`);
+    const data = await res.json();
+    updateHud(data);
+  } catch {}
+}
+
+setInterval(updateBlockAge, 1000);
 
 // press 'b' to simulate a block (dev only)
 window.addEventListener("keydown", (e) => {
-  if (e.key === "b") onBlockSeen([], 800);
+  if (e.key === "b") onBlockSeen([], 800, 2000, 45.5);
 });
 
-(window as any).simulateBlock = (sizeKb: number) => onBlockSeen([], sizeKb);
+(window as any).simulateBlock = (sizeKb: number, ntx = 2000, totalBtc = 45.5) => onBlockSeen([], sizeKb, ntx, totalBtc);
