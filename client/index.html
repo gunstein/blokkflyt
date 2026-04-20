@@ -23,6 +23,7 @@
       }
 
       #hud-left  { left: 24px; }
+      #hud-right { right: 24px; }
 
       .hud-block {
         background: rgba(10, 15, 25, 0.75);
@@ -97,6 +98,27 @@
         border-radius: 50%;
         background: #44cc88;
       }
+
+      .fee-bar {
+        height: 8px;
+        border-radius: 4px;
+        background: linear-gradient(to right, #8888ff, #4488ff, #44cc88, #f7931a, #ff3333);
+      }
+
+      .fee-labels {
+        display: flex;
+        justify-content: space-between;
+        font-size: 10px;
+        color: #556677;
+        margin-top: 3px;
+      }
+
+      .hud-value.orange { color: #f7931a; }
+      .hud-mono {
+        font-size: 10px;
+        color: #aabbcc;
+        word-break: break-all;
+      }
     </style>
   </head>
   <body>
@@ -121,6 +143,27 @@
         <div class="hud-label">Peers</div>
         <div class="hud-value green" id="peers-count">—</div>
         <div class="peers-dots" id="peers-dots"></div>
+      </div>
+    </div>
+
+    <div class="hud" id="hud-right">
+      <div class="hud-block">
+        <div class="hud-label">Fee Rate (sat/vB)</div>
+        <div class="fee-bar"></div>
+        <div class="fee-labels">
+          <span>0</span><span>2</span><span>5</span><span>15</span><span>80+</span>
+        </div>
+      </div>
+      <div class="hud-block">
+        <div class="hud-label">Next Block ETA</div>
+        <div class="hud-value orange" id="next-block-eta">~10 min</div>
+      </div>
+      <div class="hud-block">
+        <div class="hud-label">Latest Block</div>
+        <div class="hud-mono" id="latest-block-hash">—</div>
+        <div class="hud-row" style="margin-top:6px">Txs <span id="latest-block-ntx">—</span></div>
+        <div class="hud-row">Size <span id="latest-block-size">—</span></div>
+        <div class="hud-row">Time <span id="latest-block-time">—</span></div>
       </div>
     </div>
 

@@ -57,7 +57,28 @@ function drawRing(): void {
 }
 
 drawRing();
-window.addEventListener("resize", drawRing);
+window.addEventListener("resize", () => { drawRing(); positionMempoolLabel(); });
+
+// --- mempool label ---
+
+const mempoolLabel = new Text({
+  text: "MEMPOOL",
+  style: new TextStyle({
+    fill: 0x334455,
+    fontSize: 14,
+    fontFamily: "monospace",
+    letterSpacing: 6,
+  }),
+});
+mempoolLabel.anchor.set(0.5, 0.5);
+app.stage.addChild(mempoolLabel);
+
+function positionMempoolLabel(): void {
+  mempoolLabel.x = centerX();
+  mempoolLabel.y = centerY();
+}
+
+positionMempoolLabel();
 
 // --- block segments ---
 
@@ -69,7 +90,7 @@ function blockStrokeWidth(sizeKb: number): number {
   return 16;
 }
 
-function addBlockSegment(sizeKb: number, ntx: number, totalBtc: number): void {
+function addBlockSegment(sizeKb: number, ntx: number, totalBtc: number, height: number): void {
   const cx = centerX();
   const cy = centerY();
   const r = ringRadius();
@@ -85,11 +106,12 @@ function addBlockSegment(sizeKb: number, ntx: number, totalBtc: number): void {
   app.stage.addChild(gfx);
 
   const labelStyle = new TextStyle({ fill: 0xffffff, fontSize: 11, fontFamily: "monospace", align: "center" });
-  const labelText = ntx > 0 ? `${ntx} tx\n${totalBtc} BTC` : `${sizeKb} KB`;
+  const heightLine = height > 0 ? `#${height.toLocaleString()}\n` : "";
+  const labelText = ntx > 0 ? `${heightLine}${ntx} tx\n${totalBtc} BTC` : `${sizeKb} KB`;
   const label = new Text({ text: labelText, style: labelStyle });
   label.anchor.set(0.5, 0.5);
-  label.x = cx + Math.cos(angle) * (r + 28);
-  label.y = cy + Math.sin(angle) * (r + 28);
+  label.x = cx + Math.cos(angle) * (r + 36);
+  label.y = cy + Math.sin(angle) * (r + 36);
   app.stage.addChild(label);
 
   blockSegments.push({ gfx, label, createdAt: Date.now() });
@@ -189,9 +211,10 @@ function flashAndClear(txids: string[]): void {
   }
 }
 
-function onBlockSeen(confirmedTxids: string[], sizeKb: number, ntx: number, totalBtc: number): void {
-  addBlockSegment(sizeKb, ntx, totalBtc);
+function onBlockSeen(confirmedTxids: string[], sizeKb: number, ntx: number, totalBtc: number, height: number): void {
+  addBlockSegment(sizeKb, ntx, totalBtc, height);
   flashAndClear(confirmedTxids);
+  updateLatestBlock(ntx, sizeKb);
 }
 
 // --- animation loop ---
@@ -260,7 +283,7 @@ function connectWebSocket(): void {
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === "tx_seen") addTx(msg.txid, msg.fee_rate, msg.vsize, msg.amount_btc);
-    else if (msg.type === "block_seen") onBlockSeen(msg.confirmed_txids ?? [], msg.size_kb ?? 0, msg.ntx ?? 0, msg.total_btc ?? 0);
+    else if (msg.type === "block_seen") onBlockSeen(msg.confirmed_txids ?? [], msg.size_kb ?? 0, msg.ntx ?? 0, msg.total_btc ?? 0, msg.height ?? 0);
   };
   ws.onclose = () => setTimeout(connectWebSocket, 3000);
 }
@@ -282,7 +305,11 @@ function timeAgo(unixTs: number): string {
 
 let lastBlockTime = 0;
 
-function updateHud(data: Record<string, number>): void {
+function utcTime(unixTs: number): string {
+  return new Date(unixTs * 1000).toISOString().replace("T", " ").slice(0, 19) + " UTC";
+}
+
+function updateHud(data: Record<string, any>): void {
   lastBlockTime = data.best_block_time;
   (document.getElementById("block-height")!).textContent =
     data.block_height.toLocaleString();
@@ -295,6 +322,12 @@ function updateHud(data: Record<string, number>): void {
   (document.getElementById("peers-count")!).textContent =
     String(data.peers);
 
+  const hash = data.best_block_hash as string ?? "";
+  (document.getElementById("latest-block-hash")!).textContent =
+    hash ? hash.slice(0, 16) + "…" + hash.slice(-6) : "—";
+  (document.getElementById("latest-block-time")!).textContent =
+    data.best_block_time ? utcTime(data.best_block_time) : "—";
+
   const dotsEl = document.getElementById("peers-dots")!;
   dotsEl.innerHTML = "";
   const count = Math.min(data.peers, 10);
@@ -303,6 +336,13 @@ function updateHud(data: Record<string, number>): void {
     d.className = "peer-dot";
     dotsEl.appendChild(d);
   }
+}
+
+function updateLatestBlock(ntx: number, sizeKb: number): void {
+  (document.getElementById("latest-block-ntx")!).textContent =
+    ntx.toLocaleString() + " tx";
+  (document.getElementById("latest-block-size")!).textContent =
+    sizeKb + " KB";
 }
 
 function updateBlockAge(): void {
@@ -323,7 +363,7 @@ setInterval(updateBlockAge, 1000);
 
 // press 'b' to simulate a block (dev only)
 window.addEventListener("keydown", (e) => {
-  if (e.key === "b") onBlockSeen([], 800, 2000, 45.5);
+  if (e.key === "b") onBlockSeen([], 800, 2000, 45.5, 945954);
 });
 
-(window as any).simulateBlock = (sizeKb: number, ntx = 2000, totalBtc = 45.5) => onBlockSeen([], sizeKb, ntx, totalBtc);
+(window as any).simulateBlock = (sizeKb: number, ntx = 2000, totalBtc = 45.5, height = 945954) => onBlockSeen([], sizeKb, ntx, totalBtc, height);
