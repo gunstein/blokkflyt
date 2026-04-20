@@ -69,17 +69,22 @@ async def broadcast(event: dict) -> None:
 
 
 async def listen_txs() -> None:
-    sock = zmq_ctx.socket(zmq.SUB)
-    sock.connect(f"tcp://{BITCOIN_HOST}:{ZMQ_TX_PORT}")
-    sock.setsockopt_string(zmq.SUBSCRIBE, "hashtx")
-    print("[ZMQ] Listening for transactions...")
     while True:
-        parts = await sock.recv_multipart()
-        txid = parts[1].hex()
-        info = await get_tx_info(txid)
-        tx = {"txid": txid, **info}
-        mempool[txid] = tx
-        await broadcast({"type": "tx_seen", **tx})
+        try:
+            sock = zmq_ctx.socket(zmq.SUB)
+            sock.connect(f"tcp://{BITCOIN_HOST}:{ZMQ_TX_PORT}")
+            sock.setsockopt_string(zmq.SUBSCRIBE, "hashtx")
+            print("[ZMQ] Listening for transactions...")
+            while True:
+                parts = await sock.recv_multipart()
+                txid = parts[1].hex()
+                info = await get_tx_info(txid)
+                tx = {"txid": txid, **info}
+                mempool[txid] = tx
+                await broadcast({"type": "tx_seen", **tx})
+        except Exception as e:
+            print(f"[ZMQ] tx listener crashed: {e}, reconnecting in 5s...")
+            await asyncio.sleep(5)
 
 
 async def get_block_info(block_hash: str) -> dict:
@@ -106,18 +111,23 @@ async def get_block_info(block_hash: str) -> dict:
 
 
 async def listen_blocks() -> None:
-    sock = zmq_ctx.socket(zmq.SUB)
-    sock.connect(f"tcp://{BITCOIN_HOST}:{ZMQ_BLOCK_PORT}")
-    sock.setsockopt_string(zmq.SUBSCRIBE, "hashblock")
-    print("[ZMQ] Listening for blocks...")
     while True:
-        parts = await sock.recv_multipart()
-        block_hash = parts[1].hex()
-        info = await get_block_info(block_hash)
-        for txid in info["confirmed_txids"]:
-            mempool.pop(txid, None)
-        print(f"[BLOCK] ntx={info['ntx']} size={info['size_kb']}KB btc={info['total_btc']}")
-        await broadcast({"type": "block_seen", "hash": block_hash, **info})
+        try:
+            sock = zmq_ctx.socket(zmq.SUB)
+            sock.connect(f"tcp://{BITCOIN_HOST}:{ZMQ_BLOCK_PORT}")
+            sock.setsockopt_string(zmq.SUBSCRIBE, "hashblock")
+            print("[ZMQ] Listening for blocks...")
+            while True:
+                parts = await sock.recv_multipart()
+                block_hash = parts[1].hex()
+                info = await get_block_info(block_hash)
+                for txid in info["confirmed_txids"]:
+                    mempool.pop(txid, None)
+                print(f"[BLOCK] ntx={info['ntx']} size={info['size_kb']}KB btc={info['total_btc']}")
+                await broadcast({"type": "block_seen", "hash": block_hash, **info})
+        except Exception as e:
+            print(f"[ZMQ] block listener crashed: {e}, reconnecting in 5s...")
+            await asyncio.sleep(5)
 
 
 @asynccontextmanager

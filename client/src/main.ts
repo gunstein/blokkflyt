@@ -179,13 +179,10 @@ function addTx(txid: string, feeRate: number | null, vsize: number | null, amoun
 
   const angle = Math.random() * Math.PI * 2;
   const speed = 0.2 + Math.random() * 0.3;
-  const radius = nodeRadius(amountBtc);
-  const alpha = vsizeAlpha(vsize);
 
   const gfx = new Graphics();
-  gfx.circle(0, 0, radius).fill({ color: stateColor(initialState), alpha });
-
   if (amountBtc !== null && amountBtc >= 1) {
+    const radius = nodeRadius(amountBtc);
     const label = new Text({
       text: "₿",
       style: new TextStyle({ fill: 0xffffff, fontSize: Math.max(8, radius * 1.1), fontFamily: "monospace", fontWeight: "bold" }),
@@ -198,12 +195,14 @@ function addTx(txid: string, feeRate: number | null, vsize: number | null, amoun
   gfx.y = centerY();
   app.stage.addChild(gfx);
 
-  nodes.set(txid, {
+  const node: TxNode = {
     txid, gfx, x: centerX(), y: centerY(),
     vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
     firing: false, state: initialState, createdAt: Date.now(),
     vsize, amountBtc, feeRate,
-  });
+  };
+  nodes.set(txid, node);
+  drawNode(node);
 }
 
 function flashAndClear(txids: string[]): void {
