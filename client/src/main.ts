@@ -380,9 +380,3 @@ async function fetchStats(): Promise<void> {
 
 setInterval(updateBlockAge, 1000);
 
-// press 'b' to simulate a block (dev only)
-window.addEventListener("keydown", (e) => {
-  if (e.key === "b") onBlockSeen([], 800, 2000, 45.5, 945954, 0);
-});
-
-(window as any).simulateBlock = (sizeKb: number, ntx = 2000, totalBtc = 45.5, height = 945954) => onBlockSeen([], sizeKb, ntx, totalBtc, height, 0);
