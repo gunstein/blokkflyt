@@ -47,3 +47,27 @@ Agents and developers must read this before changing the architecture.
 **Decision:** Subscribe to `hashtx` and `hashblock` ZMQ topics (not `rawtx` / `rawblock`).
 
 **Why:** Hash-only topics are lightweight. The server fetches full transaction/block details via RPC when needed, keeping ZMQ bandwidth low.
+
+---
+
+## 2026-04-20 — Visual encoding: size = BTC amount, brightness = vsize
+
+**Decision:** Circle size encodes BTC amount; alpha/brightness encodes vsize (transaction complexity).
+
+**Why:** BTC amount is the most intuitive size signal — large circles mean large money. Vsize is secondary detail communicated through brightness. High-fee nodes get an additional blue stroke to show they are still in the mempool.
+
+---
+
+## 2026-04-20 — Pure functions extracted to utils.ts
+
+**Decision:** All pure mapping functions (nodeRadius, vsizeAlpha, stateColor, blockStrokeWidth, timeAgo) live in `utils.ts`, not `main.ts`.
+
+**Why:** `main.ts` has top-level side effects (PixiJS init, fetch) that make it impossible to import in a test environment. Extracting pure functions to a side-effect-free module enables unit testing without mocks.
+
+---
+
+## 2026-04-20 — ZMQ listeners with automatic reconnect
+
+**Decision:** Both `listen_txs` and `listen_blocks` wrap their inner loop in a try/except that sleeps 5 seconds and retries on any exception.
+
+**Why:** Without this, a single ZMQ error silently kills the listener loop. The server process stays alive but stops delivering data with no visible indication.
