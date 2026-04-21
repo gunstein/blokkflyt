@@ -82,7 +82,31 @@ def test_activity_quiet():
     assert result["deviation_pct"] == -35
 
 
-def test_activity_baseline_excludes_current_sample():
+# --- _compute_supply ---
+
+def test_supply_genesis():
+    result = main._compute_supply(0)
+    assert result["circulating_btc"] == 0.0
+    assert result["current_subsidy"] == 50.0
+    assert result["next_halving_block"] == 210_000
+
+def test_supply_first_halving():
+    result = main._compute_supply(210_000)
+    assert result["circulating_btc"] == 210_000 * 50.0
+    assert result["current_subsidy"] == 25.0
+
+def test_supply_percent_mined():
+    result = main._compute_supply(840_000)  # 4th halving
+    assert result["percent_mined"] > 93.0
+
+def test_supply_current_era():
+    result = main._compute_supply(895_000)
+    assert result["current_subsidy"] == 3.125
+    assert result["next_halving_block"] == 1_050_000
+
+def test_supply_never_exceeds_21m():
+    result = main._compute_supply(6_930_000)  # far future
+    assert result["circulating_btc"] <= 21_000_000
     # baseline should be avg of all but last sample
     s = samples(500, 500, 500, 500, 9999)  # last = 9999, should not skew baseline
     result = main._compute_activity(500, s)

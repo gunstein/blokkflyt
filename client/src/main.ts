@@ -280,6 +280,8 @@ function connectWebSocket(): void {
     if (msg.type === "tx_seen") addTx(msg.txid, msg.fee_rate, msg.vsize, msg.amount_btc);
     else if (msg.type === "block_seen") onBlockSeen(msg.confirmed_txids ?? [], msg.size_kb ?? 0, msg.ntx ?? 0, msg.total_btc ?? 0, msg.height ?? 0, msg.time ?? 0);
     else if (msg.type === "stats_update") updateHud(msg);
+    else if (msg.type === "price_update") updatePrice(msg);
+    else if (msg.type === "sparkline_update") updateSparkline(msg.prices);
     else if (msg.type === "news_update") updateNewsTicker(msg.items);
   };
   ws.onclose = () => setTimeout(connectWebSocket, 3000);
@@ -325,6 +327,10 @@ function updateHud(data: Record<string, any>): void {
   if (data.activity) updateActivity(data.activity);
 
   if (data.fee_histogram) updateFeeHistogram(data.fee_histogram);
+  if (data.daily_tx_count !== undefined)
+    (document.getElementById("daily-tx-count")!).textContent =
+      Number(data.daily_tx_count).toLocaleString();
+  if (data.supply) updateSupply(data.supply);
 
   const fmt = (v: number | null) => v !== null ? v + " sat/vB" : "—";
   (document.getElementById("fee-fast")!).textContent   = fmt(data.fee_fast   ?? null);
@@ -393,6 +399,54 @@ async function fetchStats(): Promise<void> {
 }
 
 setInterval(updateBlockAge, 1000);
+
+// --- price ---
+
+function updatePrice(data: { usd: number | null; change_24h: number }): void {
+  const priceEl  = document.getElementById("btc-price")!;
+  const changeEl = document.getElementById("btc-change")!;
+  priceEl.textContent = data.usd !== null
+    ? "$" + Math.round(data.usd).toLocaleString()
+    : "—";
+  const sign  = data.change_24h >= 0 ? "+" : "";
+  const color = data.change_24h >= 0 ? "#44cc88" : "#ff4444";
+  changeEl.innerHTML = `<span style="color:${color}">${sign}${data.change_24h}% (24h)</span>`;
+}
+
+function updateSparkline(prices: number[]): void {
+  if (prices.length < 2) return;
+  const svg = document.getElementById("price-sparkline") as SVGElement | null;
+  if (!svg) return;
+  const W = 172, H = 32;
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const range = max - min || 1;
+  const step = W / (prices.length - 1);
+  const pts = prices.map((p, i) =>
+    `${(i * step).toFixed(1)},${(H - ((p - min) / range) * (H - 2) - 1).toFixed(1)}`
+  ).join(" ");
+  svg.innerHTML = `<polyline points="${pts}" fill="none" stroke="#f7931a" stroke-width="1.5" opacity="0.8"/>`;
+  svg.style.display = "block";
+}
+
+// --- supply ---
+
+function updateSupply(s: {
+  circulating_btc: number; percent_mined: number;
+  current_subsidy: number; next_halving_block: number;
+  blocks_until_halving: number; days_until_halving: number;
+}): void {
+  (document.getElementById("supply-btc")!).textContent =
+    (s.circulating_btc / 1_000_000).toFixed(4) + "M BTC";
+  (document.getElementById("supply-pct")!).textContent =
+    s.percent_mined + "%";
+  (document.getElementById("supply-subsidy")!).textContent =
+    s.current_subsidy + " BTC";
+  (document.getElementById("halving-block")!).textContent =
+    "#" + s.next_halving_block.toLocaleString();
+  (document.getElementById("halving-days")!).textContent =
+    s.days_until_halving.toLocaleString() + " days";
+}
 
 // --- fee histogram ---
 

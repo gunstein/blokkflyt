@@ -185,6 +185,12 @@
 
     <div class="hud" id="hud-left">
       <div class="hud-block">
+        <div class="hud-label">Bitcoin Price</div>
+        <div class="hud-value orange" id="btc-price">—</div>
+        <div class="hud-row"><span id="btc-change" style="font-size:12px">—</span></div>
+        <svg id="price-sparkline" width="172" height="32" style="margin-top:6px;display:none"></svg>
+      </div>
+      <div class="hud-block">
         <div class="hud-label">Block Height</div>
         <div class="hud-value" id="block-height">—</div>
       </div>
@@ -197,6 +203,7 @@
         <div class="hud-value purple" id="mempool-tx">—</div>
         <div class="hud-row">Size <span id="mempool-mb">—</span></div>
         <div class="hud-row">Median fee <span id="mempool-fee">—</span></div>
+        <div class="hud-row">Daily txs <span id="daily-tx-count">—</span></div>
       </div>
       <div class="hud-block">
         <div class="hud-label">Peers</div>
@@ -234,6 +241,15 @@
         <div class="hud-row">~10 min <span id="fee-fast" class="green">—</span></div>
         <div class="hud-row">~30 min <span id="fee-medium">—</span></div>
         <div class="hud-row">~1 hour <span id="fee-slow" style="color:#556677">—</span></div>
+      </div>
+      <div class="hud-block">
+        <div class="hud-label">Supply</div>
+        <div class="hud-value green" id="supply-btc">—</div>
+        <div class="hud-row">Mined <span id="supply-pct">—</span></div>
+        <div class="hud-row">Subsidy <span id="supply-subsidy">—</span></div>
+        <div class="hud-row" style="margin-top:4px;font-size:10px;color:#556677">Next halving</div>
+        <div class="hud-row">Block <span id="halving-block">—</span></div>
+        <div class="hud-row">In <span id="halving-days">—</span></div>
       </div>
       <div class="hud-block">
         <div class="hud-label">Latest Block</div>

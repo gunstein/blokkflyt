@@ -24,7 +24,19 @@ ZMQ_BLOCK_PORT = 28332
 ZMQ_TX_PORT = 28333
 
 NEWS_RSS_URL = "https://bitcoinmagazine.com/feed"
-NEWS_FETCH_INTERVAL = 900  # 15 minutes
+NEWS_FETCH_INTERVAL = 900   # 15 minutes
+PRICE_FETCH_INTERVAL = 60   # 1 minute
+SPARKLINE_FETCH_INTERVAL = 21600  # 6 hours
+
+COINGECKO_PRICE_URL = (
+    "https://api.coingecko.com/api/v3/simple/price"
+    "?ids=bitcoin&vs_currencies=usd&include_24hr_change=true"
+)
+COINGECKO_SPARKLINE_URL = (
+    "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
+    "?vs_currency=usd&days=7&interval=daily"
+)
+COINGECKO_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; blokkflyt)"}
 
 mempool: dict[str, dict] = {}
 clients: list[WebSocket] = []
@@ -32,6 +44,8 @@ mempool_tx_samples: deque[int] = deque(maxlen=20)  # ~10 min at 30s intervals
 mempool_activity: dict = {"status": "calibrating", "deviation_pct": None, "baseline": None}
 cached_stats: dict | None = None
 cached_news: list[dict] = []
+cached_price: dict | None = None
+cached_sparkline: list[float] = []
 recent_blocks: deque[dict] = deque(maxlen=12)
 
 zmq_ctx = zmq.asyncio.Context()
@@ -84,6 +98,24 @@ def _fee_histogram() -> list[dict]:
             for i, (_, _, label) in enumerate(FEE_BUCKETS)]
 
 
+def _compute_supply(block_height: int) -> dict:
+    HALVING_INTERVAL = 210_000
+    MAX_SUPPLY = 21_000_000.0
+    halvings = block_height // HALVING_INTERVAL
+    supply = sum(HALVING_INTERVAL * (50.0 / 2 ** e) for e in range(halvings))
+    supply += (block_height % HALVING_INTERVAL) * (50.0 / 2 ** halvings)
+    next_halving_block = (halvings + 1) * HALVING_INTERVAL
+    blocks_until = next_halving_block - block_height
+    return {
+        "circulating_btc": round(supply, 2),
+        "percent_mined": round(supply / MAX_SUPPLY * 100, 4),
+        "current_subsidy": 50.0 / 2 ** halvings,
+        "next_halving_block": next_halving_block,
+        "blocks_until_halving": blocks_until,
+        "days_until_halving": round(blocks_until * 10 / 60 / 24),
+    }
+
+
 def _median_fee_rate() -> float | None:
     rates = [tx["fee_rate"] for tx in mempool.values() if tx.get("fee_rate") is not None]
     if not rates:
@@ -113,10 +145,11 @@ def _compute_activity(current: int, samples: deque[int]) -> dict:
 
 async def _refresh_stats() -> None:
     global cached_stats
-    chain_info, mempool_info, network_info = await asyncio.gather(
+    chain_info, mempool_info, network_info, tx_stats = await asyncio.gather(
         asyncio.to_thread(lambda: rpc().getblockchaininfo()),
         asyncio.to_thread(lambda: rpc().getmempoolinfo()),
         asyncio.to_thread(lambda: rpc().getnetworkinfo()),
+        asyncio.to_thread(lambda: rpc().getchaintxstats(144)),
     )
     best_hash = chain_info.get("bestblockhash", "")
     best_block, fee_fast, fee_medium, fee_slow = await asyncio.gather(
@@ -151,6 +184,8 @@ async def _refresh_stats() -> None:
         "fee_medium":    to_sat_vb(fee_medium),
         "fee_slow":      to_sat_vb(fee_slow),
         "fee_histogram": _fee_histogram(),
+        "daily_tx_count": tx_stats.get("window_tx_count", 0),
+        "supply": _compute_supply(chain_info.get("blocks", 0)),
     }
     await broadcast({"type": "stats_update", **cached_stats})
 
@@ -243,6 +278,38 @@ async def listen_blocks() -> None:
             await asyncio.sleep(5)
 
 
+async def sample_price() -> None:
+    global cached_price
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(COINGECKO_PRICE_URL, headers=COINGECKO_HEADERS)
+            btc = resp.json().get("bitcoin", {})
+            cached_price = {
+                "usd": btc.get("usd"),
+                "change_24h": round(float(btc.get("usd_24h_change") or 0), 2),
+            }
+            await broadcast({"type": "price_update", **cached_price})
+        except Exception as e:
+            print(f"[PRICE] fetch failed: {e}")
+        await asyncio.sleep(PRICE_FETCH_INTERVAL)
+
+
+async def sample_sparkline() -> None:
+    global cached_sparkline
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(COINGECKO_SPARKLINE_URL, headers=COINGECKO_HEADERS)
+            prices = [p[1] for p in resp.json().get("prices", [])]
+            if prices:
+                cached_sparkline = [round(p, 2) for p in prices]
+                await broadcast({"type": "sparkline_update", "prices": cached_sparkline})
+        except Exception as e:
+            print(f"[SPARKLINE] fetch failed: {e}")
+        await asyncio.sleep(SPARKLINE_FETCH_INTERVAL)
+
+
 async def sample_news() -> None:
     global cached_news
     while True:
@@ -282,6 +349,8 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(listen_txs())
     asyncio.create_task(listen_blocks())
     asyncio.create_task(sample_stats())
+    asyncio.create_task(sample_price())
+    asyncio.create_task(sample_sparkline())
     asyncio.create_task(sample_news())
     yield
 
@@ -314,6 +383,10 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     print(f"[WS] Client connected ({len(clients)} total)")
     for block_event in recent_blocks:
         await ws.send_json(block_event)
+    if cached_price:
+        await ws.send_json({"type": "price_update", **cached_price})
+    if cached_sparkline:
+        await ws.send_json({"type": "sparkline_update", "prices": cached_sparkline})
     if cached_news:
         await ws.send_json({"type": "news_update", "items": cached_news})
     try:
