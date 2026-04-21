@@ -17,10 +17,12 @@ Full end-to-end flow with rich visualization:
 - Per block: fetches `confirmed_txids`, `ntx`, `size_kb`, `time`, `height` via RPC (`getblock` verbosity 2)
 - Only confirmed txids are removed from mempool on block
 - Background task `sample_stats()` runs every 30s and immediately on startup:
-  - Fetches chain info, mempool info, network info, fee estimates, `getchaintxstats(144)` via RPC
+  - Fetches core data (chain info, mempool info, network info, best block header) — all must succeed
+  - Fetches optional data (`getchaintxstats`, `estimatesmartfee`) — failures are logged and skipped gracefully
   - Computes mempool activity status from rolling window of 20 samples (~10 min)
   - Caches result in `cached_stats` and broadcasts `stats_update` to all WS clients
 - Block arrival triggers immediate `_refresh_stats()` so HUD updates without delay
+- REST `GET /health` — returns server status, client count, mempool size, stats availability
 - REST `GET /snapshot` — initial mempool state for connecting clients
 - REST `GET /stats` — returns `cached_stats` for initial page load only
 - WebSocket `/ws` on connect sends: last 12 block events (replay), `cached_stats`, `cached_price`, `cached_sparkline`, `cached_news`
@@ -55,6 +57,8 @@ Full end-to-end flow with rich visualization:
 - `fetchStats()` used for initial load only
 - News ticker: rotating Bitcoin Magazine headlines, one every 8s with fade + publication age
 - **Responsive layout:** on mobile (≤640px) HUDs narrow to 145px, less essential blocks hidden, legend hidden, circle shifted lower
+- **Connection status:** red "Reconnecting…" banner shown at top when WebSocket is disconnected; hidden on reconnect
+- Split into modules: `types.ts` (interfaces), `hud.ts` (DOM/HUD), `utils.ts` (pure functions), `main.ts` (PixiJS + network)
 
 ### Tests
 - `client/src/utils.test.ts` — 26 vitest tests covering visual encoding thresholds (`npm test`)
@@ -64,6 +68,11 @@ Full end-to-end flow with rich visualization:
 
 ## ✅ Last completed
 
+- Client split into modules: `types.ts`, `hud.ts`, `utils.ts`, `main.ts`
+- Named constants replacing magic numbers (`MOBILE_BREAKPOINT`, `BLOCK_FADE_MS`, etc.)
+- `GET /health` endpoint on server
+- `_refresh_stats` resilience: optional RPC calls (`getchaintxstats`, `estimatesmartfee`) fail gracefully
+- WebSocket disconnection banner ("Reconnecting…") shown to user
 - Responsive layout for mobile (≤640px): compact HUDs, hidden non-essential blocks, circle shifted lower
 - Fixed server JSON serialization: explicit int()/float() casting to prevent Decimal errors from python-bitcoinrpc
 - `cached_stats` now sent to new WebSocket clients on connect (no wait for next 30s cycle)

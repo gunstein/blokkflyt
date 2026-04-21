@@ -90,6 +90,30 @@ Agents and developers must read this before changing the architecture.
 
 ---
 
+## 2026-04-21 — Client split into modules
+
+**Decision:** Split `main.ts` into `types.ts` (shared interfaces), `hud.ts` (DOM/HUD updates), and `main.ts` (PixiJS canvas + network). `utils.ts` was already separate.
+
+**Why:** `main.ts` had grown to ~580 lines mixing PixiJS rendering, DOM manipulation, WebSocket handling, and data formatting. The split creates a clean boundary: `hud.ts` has no PixiJS imports, `main.ts` has no direct DOM manipulation. Each file has a single reason to change.
+
+---
+
+## 2026-04-21 — _refresh_stats: core vs optional RPC calls
+
+**Decision:** `_refresh_stats` splits RPC calls into two tiers: core (chain info, mempool info, network info, best block header — must all succeed) and optional (`getchaintxstats`, `estimatesmartfee` — failures are logged but do not abort the refresh).
+
+**Why:** Previously all 8 RPC calls were gathered together. A single failure in fee estimation or tx stats aborted the entire stats refresh, leaving clients without updates. Core data is always needed; optional data degrades gracefully to `null` in the HUD.
+
+---
+
+## 2026-04-21 — GET /health endpoint
+
+**Decision:** Added `GET /health` returning server status, connected client count, mempool size, and whether `cached_stats` is populated.
+
+**Why:** Without a health endpoint there is no way to quickly verify the server is alive and functional — useful during development and for future deployment monitoring.
+
+---
+
 ## 2026-04-21 — Responsive layout: desktop + mobile
 
 **Decision:** Use CSS media queries (≤640px breakpoint) to adapt the HUD layout for mobile. HUDs narrow to 145px, less essential blocks are hidden, the legend is hidden, and the canvas ring center shifts to 67% of screen height.

@@ -145,20 +145,34 @@ def _compute_activity(current: int, samples: deque[int]) -> dict:
 
 async def _refresh_stats() -> None:
     global cached_stats
-    chain_info, mempool_info, network_info, tx_stats = await asyncio.gather(
+
+    # Core data — must all succeed; if any fails the whole refresh aborts.
+    chain_info, mempool_info, network_info = await asyncio.gather(
         asyncio.to_thread(lambda: rpc().getblockchaininfo()),
         asyncio.to_thread(lambda: rpc().getmempoolinfo()),
         asyncio.to_thread(lambda: rpc().getnetworkinfo()),
-        asyncio.to_thread(lambda: rpc().getchaintxstats(144)),
     )
-    best_hash = chain_info.get("bestblockhash", "")
-    best_block, fee_fast, fee_medium, fee_slow = await asyncio.gather(
-        asyncio.to_thread(lambda: rpc().getblockheader(best_hash)),
-        asyncio.to_thread(lambda: rpc().estimatesmartfee(1)),
-        asyncio.to_thread(lambda: rpc().estimatesmartfee(3)),
-        asyncio.to_thread(lambda: rpc().estimatesmartfee(6)),
-    )
-    difficulty = chain_info.get("difficulty", 0)
+    best_hash  = chain_info.get("bestblockhash", "")
+    best_block = await asyncio.to_thread(lambda: rpc().getblockheader(best_hash))
+
+    # Optional data — failures are logged but do not abort the refresh.
+    try:
+        tx_stats = await asyncio.to_thread(lambda: rpc().getchaintxstats(144))
+    except Exception as e:
+        print(f"[STATS] getchaintxstats failed: {e}")
+        tx_stats = {}
+
+    try:
+        fee_fast, fee_medium, fee_slow = await asyncio.gather(
+            asyncio.to_thread(lambda: rpc().estimatesmartfee(1)),
+            asyncio.to_thread(lambda: rpc().estimatesmartfee(3)),
+            asyncio.to_thread(lambda: rpc().estimatesmartfee(6)),
+        )
+    except Exception as e:
+        print(f"[STATS] estimatesmartfee failed: {e}")
+        fee_fast = fee_medium = fee_slow = {}
+
+    difficulty  = chain_info.get("difficulty", 0)
     hashrate_eh = round(float(str(difficulty)) * (2 ** 32) / 600 / 1e18, 2)
 
     count = mempool_info.get("size", 0)
@@ -170,22 +184,22 @@ async def _refresh_stats() -> None:
         return round(float(rate) * 1e8 / 1000, 1) if rate else None
 
     cached_stats = {
-        "block_height": int(chain_info.get("blocks", 0)),
-        "best_block_hash": best_hash,
-        "best_block_time": int(best_block.get("time", 0)),
+        "block_height":     int(chain_info.get("blocks", 0)),
+        "best_block_hash":  best_hash,
+        "best_block_time":  int(best_block.get("time", 0)),
         "mempool_tx_count": count,
-        "mempool_size_mb": round(int(mempool_info.get("bytes", 0)) / 1e6, 2),
+        "mempool_size_mb":  round(int(mempool_info.get("bytes", 0)) / 1e6, 2),
         "mempool_median_fee": _median_fee_rate(),
-        "peers": int(network_info.get("connections", 0)),
-        "difficulty": round(float(str(difficulty)) / 1e12, 2),
-        "hashrate_eh": hashrate_eh,
-        "activity": dict(mempool_activity),
-        "fee_fast":      to_sat_vb(fee_fast),
-        "fee_medium":    to_sat_vb(fee_medium),
-        "fee_slow":      to_sat_vb(fee_slow),
-        "fee_histogram": _fee_histogram(),
-        "daily_tx_count": int(tx_stats.get("window_tx_count", 0)),
-        "supply": _compute_supply(int(chain_info.get("blocks", 0))),
+        "peers":            int(network_info.get("connections", 0)),
+        "difficulty":       round(float(str(difficulty)) / 1e12, 2),
+        "hashrate_eh":      hashrate_eh,
+        "activity":         dict(mempool_activity),
+        "fee_fast":         to_sat_vb(fee_fast),
+        "fee_medium":       to_sat_vb(fee_medium),
+        "fee_slow":         to_sat_vb(fee_slow),
+        "fee_histogram":    _fee_histogram(),
+        "daily_tx_count":   int(tx_stats.get("window_tx_count", 0)),
+        "supply":           _compute_supply(int(chain_info.get("blocks", 0))),
     }
     await broadcast({"type": "stats_update", **cached_stats})
 
@@ -362,6 +376,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/health")
+async def health() -> JSONResponse:
+    return JSONResponse({
+        "status": "ok",
+        "clients": len(clients),
+        "mempool_size": len(mempool),
+        "stats_available": cached_stats is not None,
+    })
 
 
 @app.get("/snapshot")

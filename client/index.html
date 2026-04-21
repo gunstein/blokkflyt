@@ -144,6 +144,21 @@
       .hud-value.red    { color: #ff4444; }
       .hud-value.blue   { color: #4488ff; }
 
+      #connection-status {
+        position: fixed;
+        top: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(255, 60, 60, 0.85);
+        color: #fff;
+        font-size: 11px;
+        padding: 4px 12px;
+        border-radius: 4px;
+        pointer-events: none;
+        display: none;
+        z-index: 200;
+      }
+
       #tooltip {
         position: fixed;
         display: none;
@@ -284,6 +299,8 @@
         <div class="hud-row">Time <span id="latest-block-time">—</span></div>
       </div>
     </div>
+
+    <div id="connection-status">Reconnecting…</div>
 
     <div id="tooltip">
       <div class="tt-txid" id="tt-txid"></div>
