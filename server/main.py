@@ -32,6 +32,7 @@ mempool_tx_samples: deque[int] = deque(maxlen=20)  # ~10 min at 30s intervals
 mempool_activity: dict = {"status": "calibrating", "deviation_pct": None, "baseline": None}
 cached_stats: dict | None = None
 cached_news: list[dict] = []
+recent_blocks: deque[dict] = deque(maxlen=12)
 
 zmq_ctx = zmq.asyncio.Context()
 
@@ -205,7 +206,9 @@ async def listen_blocks() -> None:
                 for txid in info["confirmed_txids"]:
                     mempool.pop(txid, None)
                 print(f"[BLOCK] ntx={info['ntx']} size={info['size_kb']}KB btc={info['total_btc']}")
-                await broadcast({"type": "block_seen", "hash": block_hash, **info})
+                block_event = {"type": "block_seen", "hash": block_hash, **info}
+                recent_blocks.append(block_event)
+                await broadcast(block_event)
                 try:
                     await _refresh_stats()
                 except Exception as e:
@@ -284,6 +287,8 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     await ws.accept()
     clients.append(ws)
     print(f"[WS] Client connected ({len(clients)} total)")
+    for block_event in recent_blocks:
+        await ws.send_json(block_event)
     if cached_news:
         await ws.send_json({"type": "news_update", "items": cached_news})
     try:
