@@ -60,6 +60,30 @@ async def get_tx_info(txid: str) -> dict:
     return {"fee_rate": fee_rate, "vsize": vsize, "amount_btc": amount_btc}
 
 
+FEE_BUCKETS = [
+    (0,   2,   "1-2"),
+    (2,   5,   "2-5"),
+    (5,   10,  "5-10"),
+    (10,  20,  "10-20"),
+    (20,  50,  "20-50"),
+    (50,  100, "50-100"),
+    (100, None, "100+"),
+]
+
+def _fee_histogram() -> list[dict]:
+    counts = [0] * len(FEE_BUCKETS)
+    for tx in mempool.values():
+        rate = tx.get("fee_rate")
+        if rate is None:
+            continue
+        for i, (low, high, _) in enumerate(FEE_BUCKETS):
+            if high is None or rate < high:
+                counts[i] += 1
+                break
+    return [{"label": label, "count": counts[i]}
+            for i, (_, _, label) in enumerate(FEE_BUCKETS)]
+
+
 def _median_fee_rate() -> float | None:
     rates = [tx["fee_rate"] for tx in mempool.values() if tx.get("fee_rate") is not None]
     if not rates:
@@ -123,9 +147,10 @@ async def _refresh_stats() -> None:
         "difficulty": round(float(str(difficulty)) / 1e12, 2),
         "hashrate_eh": hashrate_eh,
         "activity": dict(mempool_activity),
-        "fee_fast":   to_sat_vb(fee_fast),
-        "fee_medium": to_sat_vb(fee_medium),
-        "fee_slow":   to_sat_vb(fee_slow),
+        "fee_fast":      to_sat_vb(fee_fast),
+        "fee_medium":    to_sat_vb(fee_medium),
+        "fee_slow":      to_sat_vb(fee_slow),
+        "fee_histogram": _fee_histogram(),
     }
     await broadcast({"type": "stats_update", **cached_stats})
 

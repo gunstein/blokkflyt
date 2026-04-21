@@ -324,6 +324,8 @@ function updateHud(data: Record<string, any>): void {
 
   if (data.activity) updateActivity(data.activity);
 
+  if (data.fee_histogram) updateFeeHistogram(data.fee_histogram);
+
   const fmt = (v: number | null) => v !== null ? v + " sat/vB" : "—";
   (document.getElementById("fee-fast")!).textContent   = fmt(data.fee_fast   ?? null);
   (document.getElementById("fee-medium")!).textContent = fmt(data.fee_medium ?? null);
@@ -391,6 +393,33 @@ async function fetchStats(): Promise<void> {
 }
 
 setInterval(updateBlockAge, 1000);
+
+// --- fee histogram ---
+
+const HISTOGRAM_COLORS = ["#8888ff", "#4488ff", "#44cc88", "#f7931a", "#ff6633", "#ff3333", "#ff0000"];
+
+function updateFeeHistogram(buckets: { label: string; count: number }[]): void {
+  const bars = document.getElementById("fee-histogram")!;
+  const labels = document.getElementById("fee-histogram-labels")!;
+  bars.innerHTML = "";
+  labels.innerHTML = "";
+
+  const max = Math.max(...buckets.map(b => b.count), 1);
+  const barWidth = Math.floor((172 - (buckets.length - 1) * 3) / buckets.length);
+
+  buckets.forEach((b, i) => {
+    const height = Math.max(2, Math.round((b.count / max) * 44));
+    const bar = document.createElement("div");
+    bar.style.cssText = `width:${barWidth}px;height:${height}px;background:${HISTOGRAM_COLORS[i]};border-radius:2px 2px 0 0;flex-shrink:0;`;
+    bar.title = `${b.label} sat/vB: ${b.count.toLocaleString()} tx`;
+    bars.appendChild(bar);
+
+    const lbl = document.createElement("div");
+    lbl.style.cssText = `width:${barWidth}px;font-size:8px;color:#445566;text-align:center;flex-shrink:0;overflow:hidden;`;
+    lbl.textContent = b.label;
+    labels.appendChild(lbl);
+  });
+}
 
 // --- tooltip ---
 
