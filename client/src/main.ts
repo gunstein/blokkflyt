@@ -3,8 +3,8 @@ import { type TxState, HIGH_FEE_THRESHOLD, nodeRadius, vsizeAlpha, stateColor, b
 import { type StatsPayload } from "./types";
 import { updateHud, updatePrice, updateSparkline, updateNewsTicker, updateLatestBlock, setLastBlockTime, showTooltip, moveTooltip, hideTooltip } from "./hud";
 
-const API_BASE = "http://localhost:8000";
-const WS_URL   = "ws://localhost:8000/ws";
+const API_BASE = "";  // relative; Vite proxy in dev, Traefik in prod
+const WS_URL   = `${location.protocol.replace("http", "ws")}//${location.host}/ws`;
 
 const MAX_NODES            = 500;
 const MAX_BLOCKS           = 12;

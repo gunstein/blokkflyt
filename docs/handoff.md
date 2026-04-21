@@ -96,6 +96,37 @@ Nothing.
 
 ---
 
+## 🚀 Deploy
+
+**Stack:** Traefik (TLS) + podman-compose. Same pattern as Pinball2DMulti.
+
+**Files:**
+- `deploy/compose.yml` — Traefik + blokkflyt-server + blokkflyt-web
+- `deploy/deploy.sh` — pull → build → recreate
+- `deploy/.env.example` → copy to `deploy/.env` and fill in credentials
+- `server/Containerfile` — Python 3.12 slim + uvicorn
+- `client/Containerfile` — Node 22 build + nginx static
+- `client/nginx.conf` — SPA fallback + asset caching
+
+**Traefik routing:**
+- `PathPrefix(/ws|/snapshot|/stats|/health)` → blokkflyt-server (priority 10)
+- Everything else → blokkflyt-web (priority 1)
+
+**First deploy on the server:**
+```bash
+git clone https://github.com/gunstein/blokkflyt ~/source/blokkflyt
+cp ~/source/blokkflyt/deploy/.env.example ~/source/blokkflyt/deploy/.env
+# fill in .env
+cd ~/source/blokkflyt/deploy
+podman-compose up -d
+```
+
+**Subsequent deploys:** `bash ~/source/blokkflyt/deploy/deploy.sh`
+
+**Note:** If Traefik is already running (shared with Pinball2DMulti), remove the `traefik` service from `compose.yml` and connect to the existing `edge` network instead.
+
+---
+
 ## ▶️ Next recommended step
 
 - More dramatic block animation (glow/flash on new segment)

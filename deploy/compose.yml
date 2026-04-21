@@ -1,0 +1,86 @@
+networks:
+  edge:
+
+services:
+  traefik:
+    image: docker.io/library/traefik:v3.1
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      - --log.level=INFO
+
+      - --providers.docker=true
+      - --providers.docker.endpoint=unix:///var/run/docker.sock
+      - --providers.docker.exposedbydefault=false
+
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+
+      - --certificatesresolvers.le.acme.email=${LE_EMAIL}
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.le.acme.httpchallenge=true
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+
+    ports:
+      - "8080:80"
+      - "8443:443"
+
+    volumes:
+      - "${XDG_RUNTIME_DIR}/podman/podman.sock:/var/run/docker.sock:ro"
+      - "./letsencrypt:/letsencrypt:Z"
+
+    networks:
+      - edge
+
+  blokkflyt-server:
+    build:
+      context: ../server
+      dockerfile: Containerfile
+    container_name: blokkflyt-server
+    restart: unless-stopped
+    environment:
+      - BITCOIN_RPC_HOST=${BITCOIN_RPC_HOST}
+      - BITCOIN_RPC_USER=${BITCOIN_RPC_USER}
+      - BITCOIN_RPC_PASSWORD=${BITCOIN_RPC_PASSWORD}
+      - BITCOIN_RPC_PORT=${BITCOIN_RPC_PORT:-8332}
+      - ALLOWED_ORIGINS=https://${BLOKKFLYT_HOST}
+    networks: [edge]
+    expose:
+      - "8000"
+    labels:
+      - "traefik.enable=true"
+      # API routes: WebSocket + REST endpoints
+      - "traefik.http.routers.blokkflyt-api.rule=Host(`${BLOKKFLYT_HOST}`) && (PathPrefix(`/ws`) || PathPrefix(`/snapshot`) || PathPrefix(`/stats`) || PathPrefix(`/health`))"
+      - "traefik.http.routers.blokkflyt-api.entrypoints=websecure"
+      - "traefik.http.routers.blokkflyt-api.tls.certresolver=le"
+      - "traefik.http.routers.blokkflyt-api.priority=10"
+      - "traefik.http.routers.blokkflyt-api.middlewares=blokkflyt-api-ratelimit@docker,blokkflyt-headers@docker"
+      - "traefik.http.services.blokkflyt-api-svc.loadbalancer.server.port=8000"
+      - "traefik.http.middlewares.blokkflyt-api-ratelimit.ratelimit.average=20"
+      - "traefik.http.middlewares.blokkflyt-api-ratelimit.ratelimit.burst=40"
+      - "traefik.http.middlewares.blokkflyt-api-ratelimit.ratelimit.period=1m"
+      - "traefik.http.middlewares.blokkflyt-headers.headers.customResponseHeaders.Server="
+
+  blokkflyt-web:
+    build:
+      context: ../client
+      dockerfile: Containerfile
+    container_name: blokkflyt-web
+    restart: unless-stopped
+    networks: [edge]
+    expose:
+      - "80"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.blokkflyt-web.rule=Host(`${BLOKKFLYT_HOST}`)"
+      - "traefik.http.routers.blokkflyt-web.entrypoints=websecure"
+      - "traefik.http.routers.blokkflyt-web.tls.certresolver=le"
+      - "traefik.http.routers.blokkflyt-web.priority=1"
+      - "traefik.http.routers.blokkflyt-web.middlewares=blokkflyt-csp@docker"
+      - "traefik.http.services.blokkflyt-web-svc.loadbalancer.server.port=80"
+      - "traefik.http.middlewares.blokkflyt-csp.headers.contentsecuritypolicy=default-src 'none'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://${BLOKKFLYT_HOST}; img-src 'self' data:; font-src 'self'"
+      - "traefik.http.middlewares.blokkflyt-csp.headers.customResponseHeaders.Server="
+      - "traefik.http.middlewares.blokkflyt-csp.headers.customResponseHeaders.X-Powered-By="

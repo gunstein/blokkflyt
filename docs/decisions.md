@@ -122,6 +122,18 @@ Agents and developers must read this before changing the architecture.
 
 ---
 
+## 2026-04-21 — Deploy: Traefik + podman-compose, same pattern as Pinball2DMulti
+
+**Decision:** Use Traefik as reverse proxy with Let's Encrypt TLS, podman-compose for container orchestration. Client and server run as separate containers behind the same Traefik instance.
+
+**Routing:** Traefik routes `/ws`, `/snapshot`, `/stats`, `/health` (priority 10) to the server container, and all other paths (priority 1) to the web container (nginx). This lets client use relative URLs — no hardcoded hostnames in the build.
+
+**Why relative URLs + Vite proxy:** In dev, `vite.config.ts` proxies API paths to `localhost:8000`. In prod, Traefik handles the routing. The client binary never needs to know the server's address — same build works everywhere.
+
+**ALLOWED_ORIGINS** is configured via env var so the server's CORS policy reflects the actual domain without a code change.
+
+---
+
 ## 2026-04-21 — Explicit int()/float() casting before JSON broadcast
 
 **Decision:** All values stored in `cached_stats` are explicitly cast with `int()` or `float()` before being broadcast via WebSocket.
