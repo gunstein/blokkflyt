@@ -1,5 +1,5 @@
 import { Application, Graphics, Text, TextStyle } from "pixi.js";
-import { type TxState, HIGH_FEE_THRESHOLD, nodeRadius, vsizeAlpha, stateColor, blockStrokeWidth, timeAgo } from "./utils";
+import { type TxState, HIGH_FEE_THRESHOLD, nodeRadius, vsizeAlpha, stateColor, blockStrokeWidth, timeAgo, newsTimeAgo } from "./utils";
 
 
 const API_BASE = "http://localhost:8000";
@@ -383,11 +383,11 @@ setInterval(updateBlockAge, 1000);
 
 // --- news ticker ---
 
-let newsItems: { title: string; link: string }[] = [];
+let newsItems: { title: string; link: string; pub_ts: number | null }[] = [];
 let newsIndex = 0;
 let newsEl: HTMLElement | null = null;
 
-function updateNewsTicker(items: { title: string; link: string }[]): void {
+function updateNewsTicker(items: { title: string; link: string; pub_ts: number | null }[]): void {
   newsItems = items;
   newsIndex = 0;
   renderNewsTicker();
@@ -399,7 +399,9 @@ function renderNewsTicker(): void {
   container.innerHTML = "";
   const div = document.createElement("div");
   div.className = "news-item visible";
-  div.textContent = newsItems[newsIndex].title;
+  const item = newsItems[newsIndex];
+  const age = item.pub_ts ? `<span style="color:#556677;margin-left:8px">${newsTimeAgo(item.pub_ts)}</span>` : "";
+  div.innerHTML = item.title + age;
   container.appendChild(div);
   newsEl = div;
 }

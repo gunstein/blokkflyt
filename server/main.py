@@ -3,6 +3,7 @@ import os
 import xml.etree.ElementTree as ET
 from collections import deque
 from contextlib import asynccontextmanager
+from email.utils import parsedate_to_datetime
 
 import httpx
 import zmq
@@ -210,12 +211,23 @@ async def sample_news() -> None:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(NEWS_RSS_URL, headers=headers, follow_redirects=True)
             root = ET.fromstring(resp.text)
-            items = [
-                {"title": (item.findtext("title") or "").strip(),
-                 "link":  (item.findtext("link")  or "").strip()}
-                for item in root.findall(".//item")[:5]
-                if (item.findtext("title") or "").strip()
-            ]
+            items = []
+            for item in root.findall(".//item")[:5]:
+                title = (item.findtext("title") or "").strip()
+                if not title:
+                    continue
+                pub_ts = None
+                pub_date = (item.findtext("pubDate") or "").strip()
+                if pub_date:
+                    try:
+                        pub_ts = int(parsedate_to_datetime(pub_date).timestamp())
+                    except Exception:
+                        pass
+                items.append({
+                    "title": title,
+                    "link": (item.findtext("link") or "").strip(),
+                    "pub_ts": pub_ts,
+                })
             if items and items != cached_news:
                 cached_news = items
                 await broadcast({"type": "news_update", "items": cached_news})
