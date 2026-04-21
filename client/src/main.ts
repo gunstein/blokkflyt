@@ -318,6 +318,11 @@ function updateHud(data: Record<string, any>): void {
 
   if (data.activity) updateActivity(data.activity);
 
+  const fmt = (v: number | null) => v !== null ? v + " sat/vB" : "—";
+  (document.getElementById("fee-fast")!).textContent   = fmt(data.fee_fast   ?? null);
+  (document.getElementById("fee-medium")!).textContent = fmt(data.fee_medium ?? null);
+  (document.getElementById("fee-slow")!).textContent   = fmt(data.fee_slow   ?? null);
+
   const dotsEl = document.getElementById("peers-dots")!;
   dotsEl.innerHTML = "";
   const count = Math.min(data.peers, 10);

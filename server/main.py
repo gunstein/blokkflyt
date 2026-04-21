@@ -94,13 +94,22 @@ async def _refresh_stats() -> None:
         asyncio.to_thread(lambda: rpc().getnetworkinfo()),
     )
     best_hash = chain_info.get("bestblockhash", "")
-    best_block = await asyncio.to_thread(lambda: rpc().getblockheader(best_hash))
+    best_block, fee_fast, fee_medium, fee_slow = await asyncio.gather(
+        asyncio.to_thread(lambda: rpc().getblockheader(best_hash)),
+        asyncio.to_thread(lambda: rpc().estimatesmartfee(1)),
+        asyncio.to_thread(lambda: rpc().estimatesmartfee(3)),
+        asyncio.to_thread(lambda: rpc().estimatesmartfee(6)),
+    )
     difficulty = chain_info.get("difficulty", 0)
     hashrate_eh = round(float(str(difficulty)) * (2 ** 32) / 600 / 1e18, 2)
 
     count = mempool_info.get("size", 0)
     mempool_tx_samples.append(count)
     mempool_activity.update(_compute_activity(count, mempool_tx_samples))
+
+    def to_sat_vb(est: dict) -> float | None:
+        rate = est.get("feerate")
+        return round(float(rate) * 1e8 / 1000, 1) if rate else None
 
     cached_stats = {
         "block_height": chain_info.get("blocks", 0),
@@ -113,6 +122,9 @@ async def _refresh_stats() -> None:
         "difficulty": round(float(str(difficulty)) / 1e12, 2),
         "hashrate_eh": hashrate_eh,
         "activity": dict(mempool_activity),
+        "fee_fast":   to_sat_vb(fee_fast),
+        "fee_medium": to_sat_vb(fee_medium),
+        "fee_slow":   to_sat_vb(fee_slow),
     }
     await broadcast({"type": "stats_update", **cached_stats})
 
