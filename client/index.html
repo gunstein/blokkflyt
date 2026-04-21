@@ -143,6 +143,36 @@
       .hud-value.orange { color: #f7931a; }
       .hud-value.red    { color: #ff4444; }
       .hud-value.blue   { color: #4488ff; }
+
+      #tooltip {
+        position: fixed;
+        display: none;
+        background: rgba(10, 15, 25, 0.92);
+        border: 1px solid #1e2d3d;
+        border-radius: 6px;
+        padding: 10px 13px;
+        font-size: 11px;
+        color: #aabbcc;
+        pointer-events: none;
+        z-index: 100;
+        min-width: 180px;
+      }
+
+      .tt-txid {
+        font-size: 10px;
+        color: #556677;
+        margin-bottom: 6px;
+        word-break: break-all;
+      }
+
+      .tt-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        margin-top: 3px;
+      }
+
+      .tt-row span { color: #fff; }
       .hud-mono {
         font-size: 10px;
         color: #aabbcc;
@@ -207,6 +237,13 @@
         <div class="hud-row">Size <span id="latest-block-size">—</span></div>
         <div class="hud-row">Time <span id="latest-block-time">—</span></div>
       </div>
+    </div>
+
+    <div id="tooltip">
+      <div class="tt-txid" id="tt-txid"></div>
+      <div class="tt-row">Fee rate <span id="tt-fee">—</span></div>
+      <div class="tt-row">Amount <span id="tt-amount">—</span></div>
+      <div class="tt-row">Size <span id="tt-vsize">—</span></div>
     </div>
 
     <div id="news-ticker"></div>

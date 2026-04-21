@@ -155,6 +155,8 @@ function addTx(txid: string, feeRate: number | null, vsize: number | null, amoun
     gfx.addChild(label);
   }
 
+  gfx.eventMode = "static";
+  gfx.cursor = "crosshair";
   gfx.x = centerX();
   gfx.y = centerY();
   app.stage.addChild(gfx);
@@ -167,6 +169,10 @@ function addTx(txid: string, feeRate: number | null, vsize: number | null, amoun
   };
   nodes.set(txid, node);
   drawNode(node);
+
+  gfx.on("pointerover", (e) => showTooltip(node, e.client.x, e.client.y));
+  gfx.on("pointermove", (e) => moveTooltip(e.client.x, e.client.y));
+  gfx.on("pointerout",  () => hideTooltip());
 }
 
 function flashAndClear(txids: string[]): void {
@@ -385,6 +391,38 @@ async function fetchStats(): Promise<void> {
 }
 
 setInterval(updateBlockAge, 1000);
+
+// --- tooltip ---
+
+const tooltipEl = document.getElementById("tooltip")!;
+
+function showTooltip(node: TxNode, x: number, y: number): void {
+  const txid = node.txid;
+  document.getElementById("tt-txid")!.textContent =
+    txid.slice(0, 10) + "…" + txid.slice(-8);
+  document.getElementById("tt-fee")!.textContent =
+    node.feeRate !== null ? node.feeRate + " sat/vB" : "unknown";
+  document.getElementById("tt-amount")!.textContent =
+    node.amountBtc !== null ? node.amountBtc + " BTC" : "unknown";
+  document.getElementById("tt-vsize")!.textContent =
+    node.vsize !== null ? node.vsize + " vbytes" : "unknown";
+  tooltipEl.style.display = "block";
+  moveTooltip(x, y);
+}
+
+function moveTooltip(x: number, y: number): void {
+  const pad = 14;
+  const tw = tooltipEl.offsetWidth;
+  const th = tooltipEl.offsetHeight;
+  const left = x + pad + tw > window.innerWidth ? x - tw - pad : x + pad;
+  const top  = y + pad + th > window.innerHeight ? y - th - pad : y + pad;
+  tooltipEl.style.left = left + "px";
+  tooltipEl.style.top  = top  + "px";
+}
+
+function hideTooltip(): void {
+  tooltipEl.style.display = "none";
+}
 
 // --- news ticker ---
 
