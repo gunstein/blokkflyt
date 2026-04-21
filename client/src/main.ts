@@ -32,6 +32,40 @@ interface BlockSegment {
   createdAt: number;
 }
 
+interface ActivityPayload {
+  status: string;
+  deviation_pct: number | null;
+  baseline: number | null;
+}
+
+interface SupplyPayload {
+  circulating_btc: number;
+  percent_mined: number;
+  current_subsidy: number;
+  next_halving_block: number;
+  blocks_until_halving: number;
+  days_until_halving: number;
+}
+
+interface StatsPayload {
+  block_height: number;
+  best_block_hash: string;
+  best_block_time: number;
+  mempool_tx_count: number;
+  mempool_size_mb: number;
+  mempool_median_fee: number | null;
+  peers: number;
+  hashrate_eh?: number;
+  difficulty?: number;
+  daily_tx_count?: number;
+  fee_fast?: number | null;
+  fee_medium?: number | null;
+  fee_slow?: number | null;
+  activity?: ActivityPayload;
+  fee_histogram?: { label: string; count: number }[];
+  supply?: SupplyPayload;
+}
+
 const nodes = new Map<string, TxNode>();
 const blockSegments: BlockSegment[] = [];
 
@@ -175,6 +209,8 @@ function addTx(txid: string, feeRate: number | null, vsize: number | null, amoun
   gfx.on("pointerout",  () => hideTooltip());
 }
 
+let lastBlockTime = 0;
+
 function flashAndClear(txids: string[]): void {
   const cx = centerX();
   const cy = centerY();
@@ -293,58 +329,64 @@ fetchStats(); // initial load only — subsequent updates arrive via stats_updat
 
 // --- HUD ---
 
-let lastBlockTime = 0;
+function setText(id: string, value: string): void {
+  (document.getElementById(id)!).textContent = value;
+}
 
 function utcTime(unixTs: number): string {
   return new Date(unixTs * 1000).toISOString().replace("T", " ").slice(0, 19) + " UTC";
 }
 
-function updateHud(data: Record<string, any>): void {
-  lastBlockTime = data.best_block_time;
-  (document.getElementById("block-height")!).textContent =
-    data.block_height.toLocaleString();
-  (document.getElementById("mempool-tx")!).textContent =
-    data.mempool_tx_count.toLocaleString() + " tx";
-  (document.getElementById("mempool-mb")!).textContent =
-    data.mempool_size_mb + " MB";
-  (document.getElementById("mempool-fee")!).textContent =
-    data.mempool_median_fee + " sat/vB";
-  (document.getElementById("peers-count")!).textContent =
-    String(data.peers);
-
-  const hash = data.best_block_hash as string ?? "";
-  (document.getElementById("latest-block-hash")!).textContent =
-    hash ? hash.slice(0, 16) + "…" + hash.slice(-6) : "—";
-  (document.getElementById("latest-block-time")!).textContent =
-    data.best_block_time ? utcTime(data.best_block_time) : "—";
-
-  if (data.hashrate_eh !== undefined)
-    (document.getElementById("hashrate")!).textContent = data.hashrate_eh + " EH/s";
-  if (data.difficulty !== undefined)
-    (document.getElementById("difficulty")!).textContent =
-      data.difficulty + " T";
-
-  if (data.activity) updateActivity(data.activity);
-
-  if (data.fee_histogram) updateFeeHistogram(data.fee_histogram);
+function updateMempoolSection(data: StatsPayload): void {
+  setText("mempool-tx",  data.mempool_tx_count.toLocaleString() + " tx");
+  setText("mempool-mb",  data.mempool_size_mb + " MB");
+  setText("mempool-fee", (data.mempool_median_fee ?? "—") + " sat/vB");
   if (data.daily_tx_count !== undefined)
-    (document.getElementById("daily-tx-count")!).textContent =
-      Number(data.daily_tx_count).toLocaleString();
-  if (data.supply) updateSupply(data.supply);
+    setText("daily-tx-count", Number(data.daily_tx_count).toLocaleString());
+}
 
-  const fmt = (v: number | null) => v !== null ? v + " sat/vB" : "—";
-  (document.getElementById("fee-fast")!).textContent   = fmt(data.fee_fast   ?? null);
-  (document.getElementById("fee-medium")!).textContent = fmt(data.fee_medium ?? null);
-  (document.getElementById("fee-slow")!).textContent   = fmt(data.fee_slow   ?? null);
-
+function updatePeersSection(data: StatsPayload): void {
+  setText("peers-count", String(data.peers));
   const dotsEl = document.getElementById("peers-dots")!;
   dotsEl.innerHTML = "";
-  const count = Math.min(data.peers, 10);
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < Math.min(data.peers, 10); i++) {
     const d = document.createElement("div");
     d.className = "peer-dot";
     dotsEl.appendChild(d);
   }
+}
+
+function updateNetworkSection(data: StatsPayload): void {
+  if (data.hashrate_eh !== undefined) setText("hashrate",   data.hashrate_eh + " EH/s");
+  if (data.difficulty  !== undefined) setText("difficulty", data.difficulty  + " T");
+}
+
+function updateLatestBlockSection(data: StatsPayload): void {
+  const hash = data.best_block_hash ?? "";
+  setText("latest-block-hash",
+    hash ? hash.slice(0, 16) + "…" + hash.slice(-6) : "—");
+  setText("latest-block-time",
+    data.best_block_time ? utcTime(data.best_block_time) : "—");
+}
+
+function updateRecommendedFees(data: StatsPayload): void {
+  const fmt = (v: number | null | undefined) => v != null ? v + " sat/vB" : "—";
+  setText("fee-fast",   fmt(data.fee_fast));
+  setText("fee-medium", fmt(data.fee_medium));
+  setText("fee-slow",   fmt(data.fee_slow));
+}
+
+function updateHud(data: StatsPayload): void {
+  lastBlockTime = data.best_block_time;
+  setText("block-height", data.block_height.toLocaleString());
+  updateMempoolSection(data);
+  updatePeersSection(data);
+  updateNetworkSection(data);
+  updateLatestBlockSection(data);
+  updateRecommendedFees(data);
+  if (data.activity)      updateActivity(data.activity);
+  if (data.fee_histogram) updateFeeHistogram(data.fee_histogram);
+  if (data.supply)        updateSupply(data.supply);
 }
 
 const ACTIVITY_COLORS: Record<string, string> = {
@@ -355,7 +397,7 @@ const ACTIVITY_COLORS: Record<string, string> = {
   quiet:       "blue",
 };
 
-function updateActivity(activity: { status: string; deviation_pct: number | null; baseline: number | null }): void {
+function updateActivity(activity: ActivityPayload): void {
   const statusEl = document.getElementById("activity-status")!;
   statusEl.textContent = activity.status.charAt(0).toUpperCase() + activity.status.slice(1);
   statusEl.className = "hud-value " + (ACTIVITY_COLORS[activity.status] ?? "");
@@ -393,8 +435,7 @@ function updateBlockAge(): void {
 async function fetchStats(): Promise<void> {
   try {
     const res = await fetch(`${API_BASE}/stats`);
-    const data = await res.json();
-    updateHud(data);
+    updateHud(await res.json() as StatsPayload);
   } catch {}
 }
 
@@ -431,11 +472,7 @@ function updateSparkline(prices: number[]): void {
 
 // --- supply ---
 
-function updateSupply(s: {
-  circulating_btc: number; percent_mined: number;
-  current_subsidy: number; next_halving_block: number;
-  blocks_until_halving: number; days_until_halving: number;
-}): void {
+function updateSupply(s: SupplyPayload): void {
   (document.getElementById("supply-btc")!).textContent =
     (s.circulating_btc / 1_000_000).toFixed(4) + "M BTC";
   (document.getElementById("supply-pct")!).textContent =
