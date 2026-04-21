@@ -170,13 +170,13 @@ async def _refresh_stats() -> None:
         return round(float(rate) * 1e8 / 1000, 1) if rate else None
 
     cached_stats = {
-        "block_height": chain_info.get("blocks", 0),
+        "block_height": int(chain_info.get("blocks", 0)),
         "best_block_hash": best_hash,
-        "best_block_time": best_block.get("time", 0),
+        "best_block_time": int(best_block.get("time", 0)),
         "mempool_tx_count": count,
-        "mempool_size_mb": round(mempool_info.get("bytes", 0) / 1e6, 2),
+        "mempool_size_mb": round(int(mempool_info.get("bytes", 0)) / 1e6, 2),
         "mempool_median_fee": _median_fee_rate(),
-        "peers": network_info.get("connections", 0),
+        "peers": int(network_info.get("connections", 0)),
         "difficulty": round(float(str(difficulty)) / 1e12, 2),
         "hashrate_eh": hashrate_eh,
         "activity": dict(mempool_activity),
@@ -184,8 +184,8 @@ async def _refresh_stats() -> None:
         "fee_medium":    to_sat_vb(fee_medium),
         "fee_slow":      to_sat_vb(fee_slow),
         "fee_histogram": _fee_histogram(),
-        "daily_tx_count": tx_stats.get("window_tx_count", 0),
-        "supply": _compute_supply(chain_info.get("blocks", 0)),
+        "daily_tx_count": int(tx_stats.get("window_tx_count", 0)),
+        "supply": _compute_supply(int(chain_info.get("blocks", 0))),
     }
     await broadcast({"type": "stats_update", **cached_stats})
 
@@ -383,6 +383,8 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     print(f"[WS] Client connected ({len(clients)} total)")
     for block_event in recent_blocks:
         await ws.send_json(block_event)
+    if cached_stats:
+        await ws.send_json({"type": "stats_update", **cached_stats})
     if cached_price:
         await ws.send_json({"type": "price_update", **cached_price})
     if cached_sparkline:

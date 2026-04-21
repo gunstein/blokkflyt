@@ -74,7 +74,11 @@ await app.init({ resizeTo: window, background: 0x000000 });
 document.getElementById("app")!.appendChild(app.canvas);
 
 function centerX() { return app.screen.width / 2; }
-function centerY() { return app.screen.height / 2; }
+function centerY() {
+  return window.innerWidth <= 640
+    ? app.screen.height * 0.67
+    : app.screen.height / 2 - 40;
+}
 function ringRadius() { return Math.min(centerX(), centerY()) * 0.85; }
 
 // --- ring ---

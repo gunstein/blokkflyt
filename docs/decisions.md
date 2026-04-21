@@ -90,6 +90,22 @@ Agents and developers must read this before changing the architecture.
 
 ---
 
+## 2026-04-21 — Responsive layout: desktop + mobile
+
+**Decision:** Use CSS media queries (≤640px breakpoint) to adapt the HUD layout for mobile. HUDs narrow to 145px, less essential blocks are hidden, the legend is hidden, and the canvas ring center shifts to 67% of screen height.
+
+**Why:** The PixiJS canvas fills the full screen on both platforms. On mobile, the HUDs overlay the top of the canvas, so the ring must be pushed down to remain visible. Hiding non-essential blocks (network hashrate, fee histogram, activity detail) keeps the mobile view readable without a full redesign.
+
+---
+
+## 2026-04-21 — Explicit int()/float() casting before JSON broadcast
+
+**Decision:** All values stored in `cached_stats` are explicitly cast with `int()` or `float()` before being broadcast via WebSocket.
+
+**Why:** python-bitcoinrpc parses JSON floats as Python `Decimal` objects. `Decimal` is not JSON-serializable by default, and a single leaked `Decimal` in the broadcast dict would cause `ws.send_json()` to throw, silently removing the client from the broadcast list. Explicit casting is a cheap safeguard.
+
+---
+
 ## 2026-04-20 — ZMQ listeners with automatic reconnect
 
 **Decision:** Both `listen_txs` and `listen_blocks` wrap their inner loop in a try/except that sleeps 5 seconds and retries on any exception.
