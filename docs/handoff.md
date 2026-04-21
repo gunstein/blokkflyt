@@ -98,32 +98,106 @@ Nothing.
 
 ## 🚀 Deploy
 
-**Stack:** Traefik (TLS) + podman-compose. Same pattern as Pinball2DMulti.
+Managed via the central `reverseproxy` repo (same server as Pinball2DMulti).
+Containerfiles are in `server/Containerfile` and `client/Containerfile`.
 
-**Files:**
-- `deploy/compose.yml` — Traefik + blokkflyt-server + blokkflyt-web
-- `deploy/deploy.sh` — pull → build → recreate
-- `deploy/.env.example` → copy to `deploy/.env` and fill in credentials
-- `server/Containerfile` — Python 3.12 slim + uvicorn
-- `client/Containerfile` — Node 22 build + nginx static
-- `client/nginx.conf` — SPA fallback + asset caching
+### 1. Add to `reverseproxy/docker-compose.yml`
 
-**Traefik routing:**
-- `PathPrefix(/ws|/snapshot|/stats|/health)` → blokkflyt-server (priority 10)
-- Everything else → blokkflyt-web (priority 1)
+```yaml
+  blokkflyt_web:
+    container_name: blokkflyt_web
+    build:
+      context: ../source/blokkflyt/client
+      dockerfile: Containerfile
+    image: localhost/blokkflyt_web:local
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - web
 
-**First deploy on the server:**
-```bash
-git clone https://github.com/gunstein/blokkflyt ~/source/blokkflyt
-cp ~/source/blokkflyt/deploy/.env.example ~/source/blokkflyt/deploy/.env
-# fill in .env
-cd ~/source/blokkflyt/deploy
-podman-compose up -d
+  blokkflyt_server:
+    container_name: blokkflyt_server
+    build:
+      context: ../source/blokkflyt/server
+      dockerfile: Containerfile
+    image: localhost/blokkflyt_server:local
+    restart: unless-stopped
+    expose:
+      - "8000"
+    environment:
+      - BITCOIN_RPC_HOST=192.168.0.104
+      - BITCOIN_RPC_USER=${BITCOIN_RPC_USER}
+      - BITCOIN_RPC_PASSWORD=${BITCOIN_RPC_PASSWORD}
+      - BITCOIN_RPC_PORT=8332
+      - ALLOWED_ORIGINS=https://blokkflyt.vatnar.no
+    networks:
+      - web
 ```
 
-**Subsequent deploys:** `bash ~/source/blokkflyt/deploy/deploy.sh`
+### 2. Add to `reverseproxy/traefik-config/dynamic.yml` — routers
 
-**Note:** If Traefik is already running (shared with Pinball2DMulti), remove the `traefik` service from `compose.yml` and connect to the existing `edge` network instead.
+```yaml
+    blokkflyt_web_router:
+      rule: "Host(`blokkflyt.vatnar.no`) && !(PathPrefix(`/ws`) || PathPrefix(`/snapshot`) || PathPrefix(`/stats`) || PathPrefix(`/health`))"
+      priority: 10
+      entryPoints: ["websecure"]
+      service: blokkflyt_web_service
+      tls:
+        certResolver: myresolver
+      middlewares: ["default-chain", "blokkflyt-csp"]
+
+    blokkflyt_api_router:
+      rule: "Host(`blokkflyt.vatnar.no`) && (PathPrefix(`/ws`) || PathPrefix(`/snapshot`) || PathPrefix(`/stats`) || PathPrefix(`/health`))"
+      priority: 20
+      entryPoints: ["websecure"]
+      service: blokkflyt_api_service
+      tls:
+        certResolver: myresolver
+      middlewares: ["ws-protect-chain"]
+```
+
+### 3. Add to `reverseproxy/traefik-config/dynamic.yml` — services
+
+```yaml
+    blokkflyt_web_service:
+      loadBalancer:
+        servers:
+          - url: "http://blokkflyt_web:80"
+
+    blokkflyt_api_service:
+      loadBalancer:
+        servers:
+          - url: "http://blokkflyt_server:8000"
+```
+
+### 4. Add to `reverseproxy/traefik-config/dynamic.yml` — middleware
+
+```yaml
+    blokkflyt-csp:
+      headers:
+        contentSecurityPolicy: "default-src 'none'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss:; img-src 'self' data:; font-src 'self'"
+```
+
+### 5. Add to `reverseproxy/deploy.sh`
+
+```bash
+BLOKKFLYT_REPO_DIR="${SOURCE_DIR}/blokkflyt"
+BLOKKFLYT_REPO_URL="https://github.com/gunstein/blokkflyt"
+
+# Pull/clone blokkflyt
+if [ -d "${BLOKKFLYT_REPO_DIR}/.git" ]; then
+  git -C "${BLOKKFLYT_REPO_DIR}" pull --ff-only
+else
+  git clone "${BLOKKFLYT_REPO_URL}" "${BLOKKFLYT_REPO_DIR}"
+fi
+```
+
+And add `blokkflyt_web blokkflyt_server` to the build and up commands.
+
+### 6. Add Bitcoin RPC credentials to `reverseproxy/.env`
+
+See `deploy/.env.example` in this repo.
 
 ---
 
