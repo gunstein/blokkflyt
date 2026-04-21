@@ -206,8 +206,9 @@ async def sample_news() -> None:
     global cached_news
     while True:
         try:
+            headers = {"User-Agent": "Mozilla/5.0 (compatible; RSS reader)"}
             async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(NEWS_RSS_URL)
+                resp = await client.get(NEWS_RSS_URL, headers=headers, follow_redirects=True)
             root = ET.fromstring(resp.text)
             items = [
                 {"title": (item.findtext("title") or "").strip(),
