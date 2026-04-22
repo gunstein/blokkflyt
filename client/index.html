@@ -62,7 +62,7 @@
 
       #news-ticker {
         position: fixed;
-        bottom: 80px;
+        bottom: 52px;
         left: 50%;
         transform: translateX(-50%);
         max-width: 700px;
@@ -303,10 +303,18 @@
     <div id="connection-status">Reconnecting…</div>
 
     <div id="tooltip">
-      <div class="tt-txid" id="tt-txid"></div>
-      <div class="tt-row">Fee rate <span id="tt-fee">—</span></div>
-      <div class="tt-row">Amount <span id="tt-amount">—</span></div>
-      <div class="tt-row">Size <span id="tt-vsize">—</span></div>
+      <div id="tt-tx">
+        <div class="tt-txid" id="tt-txid"></div>
+        <div class="tt-row">Fee rate <span id="tt-fee">—</span></div>
+        <div class="tt-row">Amount <span id="tt-amount">—</span></div>
+        <div class="tt-row">Size <span id="tt-vsize">—</span></div>
+      </div>
+      <div id="tt-block" style="display:none">
+        <div class="tt-row">Block <span id="tt-block-height">—</span></div>
+        <div class="tt-row">Transactions <span id="tt-block-ntx">—</span></div>
+        <div class="tt-row">Size <span id="tt-block-size">—</span></div>
+        <div class="tt-row">Total BTC <span id="tt-block-btc">—</span></div>
+      </div>
     </div>
 
     <div id="news-ticker"></div>
@@ -324,10 +332,7 @@
       <div class="legend-item">
         <div class="legend-dot" style="background:#ffdd00"></div> Selected for Block
       </div>
-      <div class="legend-item">
-        <div class="legend-dot" style="background:#aaaaaa"></div> Confirmed in Block
-      </div>
-      <div class="legend-item" style="border-left: 1px solid #334455; padding-left: 16px; color: #556677;">
+<div class="legend-item" style="border-left: 1px solid #334455; padding-left: 16px; color: #556677;">
         Size = BTC amount
       </div>
       <div class="legend-item" style="color: #556677;">

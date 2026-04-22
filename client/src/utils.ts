@@ -28,12 +28,10 @@ export function stateColor(state: TxState): number {
   return 0x4488ff;
 }
 
-export function blockStrokeWidth(sizeKb: number): number {
-  if (sizeKb <= 0)  return 6;
-  if (sizeKb < 200) return 4;
-  if (sizeKb < 600) return 8;
-  if (sizeKb < 900) return 12;
-  return 16;
+export function blockStrokeWidth(ntx: number): number {
+  if (ntx <= 0) return 2;
+  const MAX_TX = 6000;
+  return Math.round(2 + (Math.min(ntx, MAX_TX) / MAX_TX) * 16);
 }
 
 export function timeAgo(unixTs: number): string {

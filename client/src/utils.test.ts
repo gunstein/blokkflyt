@@ -29,11 +29,13 @@ describe("stateColor", () => {
 });
 
 describe("blockStrokeWidth", () => {
-  it("empty block gets thin line", () => expect(blockStrokeWidth(0)).toBe(6));
-  it("small block < 200 KB", () => expect(blockStrokeWidth(100)).toBe(4));
-  it("medium block 200–600 KB", () => expect(blockStrokeWidth(400)).toBe(8));
-  it("large block 600–900 KB", () => expect(blockStrokeWidth(750)).toBe(12));
-  it("full block ≥ 900 KB", () => expect(blockStrokeWidth(1000)).toBe(16));
+  it("zero tx gets minimum width",      () => expect(blockStrokeWidth(0)).toBe(2));
+  it("negative tx gets minimum width",  () => expect(blockStrokeWidth(-1)).toBe(2));
+  it("1000 tx → ~5",                   () => expect(blockStrokeWidth(1000)).toBe(5));
+  it("3000 tx → ~10",                  () => expect(blockStrokeWidth(3000)).toBe(10));
+  it("5000 tx → ~15",                  () => expect(blockStrokeWidth(5000)).toBe(15));
+  it("6000 tx → max 18",               () => expect(blockStrokeWidth(6000)).toBe(18));
+  it("oversized tx count capped at 18", () => expect(blockStrokeWidth(9999)).toBe(18));
 });
 
 describe("HIGH_FEE_THRESHOLD", () => {

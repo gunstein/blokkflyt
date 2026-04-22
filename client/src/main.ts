@@ -1,7 +1,7 @@
 import { Application, Graphics, Text, TextStyle } from "pixi.js";
 import { type TxState, HIGH_FEE_THRESHOLD, nodeRadius, vsizeAlpha, stateColor, blockStrokeWidth } from "./utils";
 import { type StatsPayload } from "./types";
-import { updateHud, updatePrice, updateSparkline, updateNewsTicker, updateLatestBlock, setLastBlockTime, showTooltip, moveTooltip, hideTooltip } from "./hud";
+import { updateHud, updatePrice, updateSparkline, updateNewsTicker, updateLatestBlock, setLastBlockTime, showTooltip, showBlockTooltip, moveTooltip, hideTooltip } from "./hud";
 
 const API_BASE = "";  // relative; Vite proxy in dev, Traefik in prod
 const WS_URL   = `${location.protocol.replace("http", "ws")}//${location.host}/ws`;
@@ -29,8 +29,11 @@ interface TxNode {
 
 interface BlockSegment {
   gfx: Graphics;
-  label: Text;
   createdAt: number;
+  height: number;
+  ntx: number;
+  sizeKb: number;
+  totalBtc: number;
 }
 
 const nodes         = new Map<string, TxNode>();
@@ -46,7 +49,8 @@ function centerY(): number {
     ? app.screen.height * MOBILE_CENTER_RATIO
     : app.screen.height / 2 - DESKTOP_CENTER_SHIFT;
 }
-function ringRadius(): number { return Math.min(centerX(), centerY()) * 0.85; }
+function ringRadius(): number      { return Math.min(centerX(), centerY()) * 0.85; }
+function blockRingRadius(): number { return ringRadius() + 36; }
 
 // --- ring ---
 
@@ -79,33 +83,27 @@ window.addEventListener("resize", () => { drawRing(); positionMempoolLabel(); })
 // --- block segments ---
 
 function addBlockSegment(sizeKb: number, ntx: number, totalBtc: number, height: number): void {
-  const cx = centerX(), cy = centerY(), r = ringRadius();
-  const angleStep = (Math.PI * 2) / MAX_BLOCKS;
-  const angle     = blockSegments.length * angleStep - Math.PI / 2;
-  const arcWidth  = angleStep * 0.7;
+  const cx = centerX(), cy = centerY(), r = blockRingRadius();
+  const angleStep   = (Math.PI * 2) / MAX_BLOCKS;
+  const angle       = blockSegments.length * angleStep - Math.PI / 2;
+  const arcWidth    = angleStep * 0.6;
 
   const gfx = new Graphics();
   gfx.arc(cx, cy, r, angle - arcWidth / 2, angle + arcWidth / 2)
-    .stroke({ color: 0xaaaaaa, width: blockStrokeWidth(sizeKb), alpha: 1 });
+    .stroke({ color: 0xffffff, width: blockStrokeWidth(ntx), alpha: 1 });
+  gfx.eventMode = "static";
+  gfx.cursor    = "crosshair";
   app.stage.addChild(gfx);
 
-  const heightLine = height > 0 ? `#${height.toLocaleString()}\n` : "";
-  const labelText  = ntx > 0 ? `${heightLine}${ntx} tx\n${totalBtc} BTC` : `${sizeKb} KB`;
-  const label = new Text({
-    text: labelText,
-    style: new TextStyle({ fill: 0xffffff, fontSize: 11, fontFamily: "monospace", align: "center" }),
-  });
-  label.anchor.set(0.5, 0.5);
-  label.x = cx + Math.cos(angle) * (r + 36);
-  label.y = cy + Math.sin(angle) * (r + 36);
-  app.stage.addChild(label);
+  gfx.on("pointerover", (e) => showBlockTooltip(height, ntx, sizeKb, totalBtc, e.client.x, e.client.y));
+  gfx.on("pointermove", (e) => moveTooltip(e.client.x, e.client.y));
+  gfx.on("pointerout",  ()  => hideTooltip());
 
-  blockSegments.push({ gfx, label, createdAt: Date.now() });
+  blockSegments.push({ gfx, createdAt: Date.now(), height, ntx, sizeKb, totalBtc });
 
   if (blockSegments.length > MAX_BLOCKS) {
     const old = blockSegments.shift()!;
     old.gfx.destroy();
-    old.label.destroy();
   }
 }
 
@@ -169,7 +167,7 @@ function addTx(txid: string, feeRate: number | null, vsize: number | null, amoun
 // --- block arrival ---
 
 function animateConfirmedTxs(txids: string[]): void {
-  const cx = centerX(), cy = centerY(), r = ringRadius();
+  const cx = centerX(), cy = centerY(), r = blockRingRadius();
   const angleStep  = (Math.PI * 2) / MAX_BLOCKS;
   const targetAngle = (blockSegments.length - 1) * angleStep - Math.PI / 2;
   const tx = cx + Math.cos(targetAngle) * r;
@@ -236,10 +234,20 @@ app.ticker.add(() => {
   }
   for (const txid of toRemove) nodes.delete(txid);
 
-  for (const seg of blockSegments) {
-    const alpha  = Math.max(0.08, 1 - (now - seg.createdAt) / BLOCK_FADE_MS);
-    seg.gfx.alpha   = alpha;
-    seg.label.alpha = alpha;
+  for (const [i, seg] of blockSegments.entries()) {
+    const posRatio = blockSegments.length > 1 ? i / (blockSegments.length - 1) : 1;
+
+    // Color: dark orange (oldest) → bright yellow (newest)
+    const r = Math.round(0xcc + posRatio * (0xff - 0xcc));
+    const g = Math.round(0x44 + posRatio * (0xee - 0x44));
+    const b = Math.round(0x00 + posRatio * (0x44 - 0x00));
+    seg.gfx.tint = (r << 16) | (g << 8) | b;
+
+    // Alpha: exponential decay by position, minimum 0.25 so oldest blocks stay visible
+    const stepsFromNewest = blockSegments.length - 1 - i;
+    const posAlpha  = Math.max(0.25, Math.pow(0.85, stepsFromNewest));
+    const timeAlpha = Math.max(0.15, 1 - (now - seg.createdAt) / BLOCK_FADE_MS);
+    seg.gfx.alpha = Math.min(posAlpha, timeAlpha);
   }
 });
 

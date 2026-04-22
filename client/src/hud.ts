@@ -170,10 +170,26 @@ export function showTooltip(
   txid: string, feeRate: number | null, amountBtc: number | null, vsize: number | null,
   x: number, y: number,
 ): void {
+  document.getElementById("tt-tx")!.style.display = "";
+  document.getElementById("tt-block")!.style.display = "none";
   setText("tt-txid",   txid.slice(0, 10) + "…" + txid.slice(-8));
-  setText("tt-fee",    feeRate    !== null ? feeRate    + " sat/vB" : "unknown");
-  setText("tt-amount", amountBtc  !== null ? amountBtc  + " BTC"    : "unknown");
-  setText("tt-vsize",  vsize      !== null ? vsize      + " vbytes"  : "unknown");
+  setText("tt-fee",    feeRate   !== null ? feeRate   + " sat/vB" : "unknown");
+  setText("tt-amount", amountBtc !== null ? amountBtc + " BTC"    : "unknown");
+  setText("tt-vsize",  vsize     !== null ? vsize     + " vbytes"  : "unknown");
+  tooltipEl.style.display = "block";
+  moveTooltip(x, y);
+}
+
+export function showBlockTooltip(
+  height: number, ntx: number, sizeKb: number, totalBtc: number,
+  x: number, y: number,
+): void {
+  document.getElementById("tt-tx")!.style.display = "none";
+  document.getElementById("tt-block")!.style.display = "";
+  setText("tt-block-height", "#" + height.toLocaleString());
+  setText("tt-block-ntx",    ntx.toLocaleString() + " tx");
+  setText("tt-block-size",   sizeKb + " KB");
+  setText("tt-block-btc",    totalBtc + " BTC");
   tooltipEl.style.display = "block";
   moveTooltip(x, y);
 }
