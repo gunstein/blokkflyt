@@ -12,6 +12,15 @@ from ws import broadcast
 zmq_ctx = zmq.asyncio.Context()
 
 
+async def flush_tx_buffer() -> None:
+    """Drain tx_buffer every 200ms and broadcast as a single tx_batch."""
+    while True:
+        await asyncio.sleep(0.2)
+        if state.tx_buffer:
+            batch, state.tx_buffer = state.tx_buffer, []
+            await broadcast({"type": "tx_batch", "txs": batch})
+
+
 async def listen_txs() -> None:
     while True:
         try:
@@ -25,7 +34,7 @@ async def listen_txs() -> None:
                 info  = await get_tx_info(txid)
                 tx    = {"txid": txid, **info}
                 state.mempool[txid] = tx
-                await broadcast({"type": "tx_seen", **tx})
+                state.tx_buffer.append(tx)  # buffer; flushed by flush_tx_buffer
         except Exception as e:
             print(f"[ZMQ] tx listener crashed: {e}, reconnecting in 5s...")
             await asyncio.sleep(5)

@@ -10,3 +10,4 @@ cached_price: dict | None = None
 cached_sparkline: list[float] = []
 recent_blocks: deque[dict] = deque(maxlen=20)
 last_block_time: int = 0
+tx_buffer: list[dict] = []

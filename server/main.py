@@ -9,13 +9,14 @@ import state
 from config import ALLOWED_ORIGINS
 from feeds import sample_news, sample_price, sample_sparkline
 from stats import sample_stats
-from zmq_listeners import listen_blocks, listen_txs
+from zmq_listeners import listen_blocks, listen_txs, flush_tx_buffer
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     asyncio.create_task(listen_txs())
     asyncio.create_task(listen_blocks())
+    asyncio.create_task(flush_tx_buffer())
     asyncio.create_task(sample_stats())
     asyncio.create_task(sample_price())
     asyncio.create_task(sample_sparkline())
