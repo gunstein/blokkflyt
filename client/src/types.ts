@@ -15,6 +15,7 @@ export interface SupplyPayload {
 
 export interface StatsPayload {
   client_count?: number;
+  oldest_mempool_sec?: number | null;
   block_height: number;
   best_block_hash: string;
   best_block_time: number;

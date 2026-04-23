@@ -114,9 +114,13 @@ async def _refresh_stats() -> None:
         rate = est.get("feerate")
         return round(float(rate) * 1e8 / 1000, 1) if rate else None
 
+    entry_times = [tx["entry_time"] for tx in state.mempool.values() if "entry_time" in tx]
+    oldest_mempool_sec = int(time.time() - min(entry_times)) if entry_times else None
+
     state.cached_stats = {
-        "client_count":     len(state.clients),
-        "block_height":     int(chain_info.get("blocks", 0)),
+        "client_count":        len(state.clients),
+        "oldest_mempool_sec":  oldest_mempool_sec,
+        "block_height":        int(chain_info.get("blocks", 0)),
         "best_block_hash":  best_hash,
         "best_block_time":  int(best_block.get("time", 0)),
         "mempool_tx_count": count,

@@ -17,12 +17,22 @@ function utcTime(unixTs: number): string {
 
 // --- HUD sections ---
 
+function formatDuration(secs: number): string {
+  if (secs < 60) return `${secs}s`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
 function updateMempoolSection(data: StatsPayload): void {
   setText("mempool-tx",  data.mempool_tx_count.toLocaleString() + " tx");
   setText("mempool-mb",  data.mempool_size_mb + " MB");
   setText("mempool-fee", (data.mempool_median_fee ?? "—") + " sat/vB");
   if (data.daily_tx_count !== undefined)
     setText("daily-tx-count", Number(data.daily_tx_count).toLocaleString());
+  if (data.oldest_mempool_sec != null)
+    setText("mempool-oldest", formatDuration(data.oldest_mempool_sec));
 }
 
 function updatePeersSection(data: StatsPayload): void {
@@ -192,6 +202,7 @@ export function showTooltip(
 
 export function showBlockTooltip(
   height: number, ntx: number, sizeKb: number, totalBtc: number,
+  medianFee: number | null,
   x: number, y: number,
 ): void {
   document.getElementById("tt-tx")!.style.display = "none";
@@ -200,6 +211,7 @@ export function showBlockTooltip(
   setText("tt-block-ntx",    ntx.toLocaleString() + " tx");
   setText("tt-block-size",   sizeKb + " KB");
   setText("tt-block-btc",    totalBtc + " BTC");
+  setText("tt-block-fee",    medianFee != null ? medianFee + " sat/vB" : "—");
   tooltipEl.style.display = "block";
   moveTooltip(x, y);
 }

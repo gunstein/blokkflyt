@@ -34,6 +34,7 @@ interface BlockSegment {
   ntx: number;
   sizeKb: number;
   totalBtc: number;
+  medianFee: number | null;
 }
 
 const nodes         = new Map<string, TxNode>();
@@ -153,7 +154,7 @@ window.addEventListener("resize", () => { drawRing(); drawClockHand(); positionM
 // --- block segments ---
 
 function addBlockSegment(
-  ntx: number, sizeKb: number, totalBtc: number, height: number,
+  ntx: number, sizeKb: number, totalBtc: number, height: number, medianFee: number | null,
 ): { x: number; y: number } {
   const cx = centerX(), cy = centerY(), r = confirmedRingRadius();
   const angleStep = (Math.PI * 2) / MAX_BLOCKS;
@@ -167,11 +168,11 @@ function addBlockSegment(
   gfx.cursor    = "crosshair";
   app.stage.addChild(gfx);
 
-  gfx.on("pointerover", (e) => showBlockTooltip(height, ntx, sizeKb, totalBtc, e.client.x, e.client.y));
+  gfx.on("pointerover", (e) => showBlockTooltip(height, ntx, sizeKb, totalBtc, medianFee, e.client.x, e.client.y));
   gfx.on("pointermove", (e) => moveTooltip(e.client.x, e.client.y));
   gfx.on("pointerout",  ()  => hideTooltip());
 
-  blockSegments.push({ gfx, createdAt: Date.now(), height, ntx, sizeKb, totalBtc });
+  blockSegments.push({ gfx, createdAt: Date.now(), height, ntx, sizeKb, totalBtc, medianFee });
 
   if (blockSegments.length > MAX_BLOCKS) {
     const old = blockSegments.shift()!;
@@ -261,9 +262,9 @@ function animateConfirmedTxs(txids: string[], tx: number, ty: number): void {
 
 function onBlockSeen(
   confirmedTxids: string[],
-  sizeKb: number, ntx: number, totalBtc: number, height: number, time: number,
+  sizeKb: number, ntx: number, totalBtc: number, height: number, time: number, medianFee: number | null,
 ): void {
-  const target = addBlockSegment(ntx, sizeKb, totalBtc, height);
+  const target = addBlockSegment(ntx, sizeKb, totalBtc, height, medianFee);
   animateConfirmedTxs(confirmedTxids, target.x, target.y);
   updateLatestBlock(ntx, sizeKb);
   if (time > 0) {
@@ -366,7 +367,7 @@ function connectWebSocket(): void {
     const msg = JSON.parse(event.data);
     if      (msg.type === "tx_seen")          addTx(msg.txid, msg.fee_rate, msg.vsize, msg.amount_btc);
     else if (msg.type === "tx_batch")         for (const tx of msg.txs) addTx(tx.txid, tx.fee_rate, tx.vsize, tx.amount_btc);
-    else if (msg.type === "block_seen")      onBlockSeen(msg.confirmed_txids ?? [], msg.size_kb ?? 0, msg.ntx ?? 0, msg.total_btc ?? 0, msg.height ?? 0, msg.time ?? 0);
+    else if (msg.type === "block_seen")      onBlockSeen(msg.confirmed_txids ?? [], msg.size_kb ?? 0, msg.ntx ?? 0, msg.total_btc ?? 0, msg.height ?? 0, msg.time ?? 0, msg.median_fee ?? null);
     else if (msg.type === "stats_update") {
       if (currentMiningStartTime === 0 && msg.best_block_time) currentMiningStartTime = msg.best_block_time;
       updateHud(msg);

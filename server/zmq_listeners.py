@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 import zmq
 import zmq.asyncio
@@ -32,7 +33,7 @@ async def listen_txs() -> None:
                 parts = await sock.recv_multipart()
                 txid  = parts[1].hex()
                 info  = await get_tx_info(txid)
-                tx    = {"txid": txid, **info}
+                tx    = {"txid": txid, "entry_time": int(time.time()), **info}
                 state.mempool[txid] = tx
                 state.tx_buffer.append(tx)  # buffer; flushed by flush_tx_buffer
         except Exception as e:
