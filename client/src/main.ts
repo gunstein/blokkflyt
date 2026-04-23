@@ -7,6 +7,7 @@ const API_BASE = "";  // relative; Vite proxy in dev, Traefik in prod
 const WS_URL   = `${location.protocol.replace("http", "ws")}//${location.host}/ws`;
 
 const MAX_NODES            = 500;
+const MAX_BLOCKS           = 20;
 const HOUR_SECS            = 3600;
 const NEW_TX_MS            = 3_000;
 const MOBILE_BREAKPOINT    = 640;
@@ -33,8 +34,6 @@ interface BlockSegment {
   ntx: number;
   sizeKb: number;
   totalBtc: number;
-  blockTime: number;
-  prevBlockTime: number;
 }
 
 const nodes         = new Map<string, TxNode>();
@@ -51,7 +50,7 @@ function centerY(): number {
     ? app.screen.height * MOBILE_CENTER_RATIO
     : app.screen.height / 2 - DESKTOP_CENTER_SHIFT;
 }
-function ringRadius(): number           { return Math.min(centerX(), centerY()) * 0.85; }
+function ringRadius(): number           { return Math.min(centerX(), centerY()) * 0.72; }
 function blockRingRadius(): number      { return ringRadius() + 36; }   // mining arc
 function confirmedRingRadius(): number  { return ringRadius() + 68; }   // confirmed blocks
 
@@ -77,17 +76,17 @@ function drawRing(): void {
   // Mempool ring
   ringGfx.circle(cx, cy, r).stroke({ color: 0x334455, width: 1.5, alpha: 0.6 });
   ringGfx.circle(cx, cy, 12).stroke({ color: 0x445566, width: 1, alpha: 0.4 });
-  // Mining arc ring
+  // Mining arc ring + quarter-hour ticks
   ringGfx.circle(cx, cy, br).stroke({ color: 0x1a2a3a, width: 1, alpha: 0.5 });
-  // Confirmed blocks ring + quarter-hour ticks
-  ringGfx.circle(cx, cy, cr).stroke({ color: 0x1a2a3a, width: 1, alpha: 0.5 });
   for (let i = 0; i < 4; i++) {
     const angle = (i / 4) * Math.PI * 2 - Math.PI / 2;
     ringGfx
-      .moveTo(cx + Math.cos(angle) * (cr - 6), cy + Math.sin(angle) * (cr - 6))
-      .lineTo(cx + Math.cos(angle) * (cr + 6), cy + Math.sin(angle) * (cr + 6))
+      .moveTo(cx + Math.cos(angle) * (br - 6), cy + Math.sin(angle) * (br - 6))
+      .lineTo(cx + Math.cos(angle) * (br + 6), cy + Math.sin(angle) * (br + 6))
       .stroke({ color: 0x334455, width: 1, alpha: 0.6 });
   }
+  // Confirmed blocks ring (evenly spaced, no time meaning)
+  ringGfx.circle(cx, cy, cr).stroke({ color: 0x1a2a3a, width: 1, alpha: 0.5 });
 }
 
 function drawClockHand(): void {
@@ -154,35 +153,15 @@ window.addEventListener("resize", () => { drawRing(); drawClockHand(); positionM
 // --- block segments ---
 
 function addBlockSegment(
-  blockTime: number, prevBlockTime: number,
   ntx: number, sizeKb: number, totalBtc: number, height: number,
 ): { x: number; y: number } {
   const cx = centerX(), cy = centerY(), r = confirmedRingRadius();
-
-  let startAngle: number;
-  let endAngle: number;
-
-  if (prevBlockTime > 0 && blockTime > 0) {
-    const startSec  = prevBlockTime % HOUR_SECS;
-    const endSec    = blockTime % HOUR_SECS;
-    // Handle wrap-around across hour boundary
-    const durationSec = endSec >= startSec
-      ? endSec - startSec
-      : endSec + HOUR_SECS - startSec;
-    const cappedDuration = Math.min(durationSec, HOUR_SECS - 1);
-    startAngle = secInHourToAngle(startSec);
-    endAngle   = secInHourToAngle(startSec + cappedDuration);
-  } else {
-    // No prev time: draw a tiny marker at the block's own minute position
-    const sec  = blockTime % HOUR_SECS;
-    startAngle = secInHourToAngle(sec) - 0.05;
-    endAngle   = secInHourToAngle(sec) + 0.05;
-  }
-
-  const midAngle = (startAngle + endAngle) / 2;
+  const angleStep = (Math.PI * 2) / MAX_BLOCKS;
+  const angle     = blockSegments.length * angleStep - Math.PI / 2;
+  const arcWidth  = angleStep * 0.65;
 
   const gfx = new Graphics();
-  gfx.arc(cx, cy, r, startAngle, endAngle)
+  gfx.arc(cx, cy, r, angle - arcWidth / 2, angle + arcWidth / 2)
     .stroke({ color: 0xffffff, width: blockStrokeWidth(ntx), alpha: 1 });
   gfx.eventMode = "static";
   gfx.cursor    = "crosshair";
@@ -192,18 +171,16 @@ function addBlockSegment(
   gfx.on("pointermove", (e) => moveTooltip(e.client.x, e.client.y));
   gfx.on("pointerout",  ()  => hideTooltip());
 
-  blockSegments.push({ gfx, createdAt: Date.now(), height, ntx, sizeKb, totalBtc, blockTime, prevBlockTime });
+  blockSegments.push({ gfx, createdAt: Date.now(), height, ntx, sizeKb, totalBtc });
 
-  // Remove blocks older than 1 hour
-  const cutoff = Date.now() / 1000 - HOUR_SECS;
-  while (blockSegments.length > 0 && blockSegments[0].blockTime < cutoff) {
+  if (blockSegments.length > MAX_BLOCKS) {
     const old = blockSegments.shift()!;
     old.gfx.destroy();
   }
 
   return {
-    x: cx + Math.cos(midAngle) * r,
-    y: cy + Math.sin(midAngle) * r,
+    x: cx + Math.cos(angle) * r,
+    y: cy + Math.sin(angle) * r,
   };
 }
 
@@ -283,10 +260,10 @@ function animateConfirmedTxs(txids: string[], tx: number, ty: number): void {
 }
 
 function onBlockSeen(
-  prevBlockTime: number, confirmedTxids: string[],
+  confirmedTxids: string[],
   sizeKb: number, ntx: number, totalBtc: number, height: number, time: number,
 ): void {
-  const target = addBlockSegment(time, prevBlockTime, ntx, sizeKb, totalBtc, height);
+  const target = addBlockSegment(ntx, sizeKb, totalBtc, height);
   animateConfirmedTxs(confirmedTxids, target.x, target.y);
   updateLatestBlock(ntx, sizeKb);
   if (time > 0) {
@@ -346,35 +323,26 @@ app.ticker.add(() => {
     const endAngle    = secInHourToAngle(startSec + cappedDur);
 
     miningArcGfx.clear();
-
     if (elapsedSec < HOUR_SECS) {
-      // Normal: single growing arc
+      // Growing arc — normal case
+      const color = elapsedSec < 2700 ? 0xaabbcc   // < 45 min: grey
+                  : elapsedSec < 3300 ? 0xf7931a   // 45–55 min: orange
+                  : 0xff4444;                        // 55–60 min: red
       miningArcGfx.arc(cx, cy, r, startAngle, endAngle)
-        .stroke({ color: 0xaabbcc, width: 2, alpha: 0.4 });
-    } else {
-      // Over one hour: full circle (dim) + overflow arc showing progress in new lap
-      miningArcGfx.arc(cx, cy, r, startAngle, startAngle + Math.PI * 2 - 0.001)
-        .stroke({ color: 0xf7931a, width: 2, alpha: 0.3 });
-      const overflowSec   = elapsedSec % HOUR_SECS;
-      const overflowAngle = secInHourToAngle(startSec + overflowSec);
-      const pulseAlpha    = 0.5 + Math.sin(now / 400) * 0.2;
-      miningArcGfx.arc(cx, cy, r, startAngle, overflowAngle)
-        .stroke({ color: 0xff4444, width: 3, alpha: pulseAlpha });
+        .stroke({ color, width: 2, alpha: 0.45 });
     }
+    // > 60 min: nothing extra shown (handled by confirmed blocks ring)
   }
 
   for (const [i, seg] of blockSegments.entries()) {
     // Color gradient: oldest = dark orange, newest = bright yellow
     const posRatio = blockSegments.length > 1 ? i / (blockSegments.length - 1) : 1;
-    const r = Math.round(0xcc + posRatio * (0xff - 0xcc));
-    const g = Math.round(0x44 + posRatio * (0xee - 0x44));
-    const b = Math.round(0x00 + posRatio * (0x44 - 0x00));
-    seg.gfx.tint = (r << 16) | (g << 8) | b;
-
-    // Alpha fades as block ages within the hour
-    const blockAgeMs = now - seg.blockTime * 1000;
-    const ageRatio   = Math.min(1, blockAgeMs / (HOUR_SECS * 1000));
-    seg.gfx.alpha    = Math.max(0.2, 1 - ageRatio * 0.8);
+    const rv = Math.round(0xcc + posRatio * (0xff - 0xcc));
+    const gv = Math.round(0x44 + posRatio * (0xee - 0x44));
+    const bv = Math.round(0x00 + posRatio * (0x44 - 0x00));
+    seg.gfx.tint  = (rv << 16) | (gv << 8) | bv;
+    const stepsFromNewest = blockSegments.length - 1 - i;
+    seg.gfx.alpha = Math.max(0.25, Math.pow(0.85, stepsFromNewest));
   }
 });
 
@@ -397,7 +365,7 @@ function connectWebSocket(): void {
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
     if      (msg.type === "tx_seen")         addTx(msg.txid, msg.fee_rate, msg.vsize, msg.amount_btc);
-    else if (msg.type === "block_seen")      onBlockSeen(msg.prev_block_time ?? 0, msg.confirmed_txids ?? [], msg.size_kb ?? 0, msg.ntx ?? 0, msg.total_btc ?? 0, msg.height ?? 0, msg.time ?? 0);
+    else if (msg.type === "block_seen")      onBlockSeen(msg.confirmed_txids ?? [], msg.size_kb ?? 0, msg.ntx ?? 0, msg.total_btc ?? 0, msg.height ?? 0, msg.time ?? 0);
     else if (msg.type === "stats_update") {
       if (currentMiningStartTime === 0 && msg.best_block_time) currentMiningStartTime = msg.best_block_time;
       updateHud(msg);
