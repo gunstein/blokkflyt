@@ -158,6 +158,7 @@ A new block was mined.
   "ntx": 2843,
   "size_kb": 1521.4,
   "total_btc": 1842.3,
+  "median_fee": 12.5,
   "time": 1776876242,
   "prev_block_time": 1776875600,
   "confirmed_txids": ["abc...", "def..."]
@@ -169,6 +170,8 @@ Full network stats snapshot. Sent every 30s and immediately after each block.
 ```json
 {
   "type": "stats_update",
+  "client_count": 3,
+  "oldest_mempool_sec": 8100,
   "block_height": 946212,
   "best_block_hash": "000000...",
   "best_block_time": 1776876242,

@@ -200,6 +200,30 @@ Agents and developers must read this before changing the architecture.
 
 ---
 
+## 2026-04-23 — Parallel WebSocket broadcast
+
+**Decision:** `broadcast()` uses `asyncio.gather` to send to all clients simultaneously instead of sequentially.
+
+**Why:** With a sequential loop, one slow or dead client blocks all subsequent clients for up to 5 seconds per send. With `asyncio.gather` all sends run concurrently — one stuck client has zero impact on delivery time for the others. Safe to implement because `json.dumps` produces the same immutable string for all clients.
+
+---
+
+## 2026-04-23 — Mempool oldest tx age
+
+**Decision:** `entry_time` (unix timestamp) is recorded on each tx dict when it arrives via ZMQ. `_refresh_stats` computes `oldest_mempool_sec = now - min(entry_times)` and includes it in `stats_update`. Displayed as a human-readable duration in the Mempool HUD block.
+
+**Why:** Oldest unconfirmed tx age is a direct signal of mempool backlog and fee pressure — a tx stuck for 2h+ means low-fee txs aren't clearing. Server-side tracking is cheap (one `int` per tx); no extra RPC calls needed.
+
+---
+
+## 2026-04-23 — Per-block median fee rate in tooltip
+
+**Decision:** `get_block_info` computes median fee rate (sat/vB) across all non-coinbase txs using data already fetched via `getblock` verbosity 2. Included in `block_seen` as `median_fee` and shown in the block segment hover tooltip.
+
+**Why:** Median fee on a confirmed block lets users see what fee rate actually cleared in that block vs. the current mempool — useful for calibrating fee estimates. Data is free (verbosity 2 already fetched for `total_btc`); no extra RPC call needed.
+
+---
+
 ## 2026-04-23 — Clock hands on canvas
 
 **Decision:** Hour, minute, and second hands are drawn as thin semi-transparent lines from the canvas center, animated every frame.

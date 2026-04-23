@@ -26,7 +26,7 @@ Full end-to-end flow with rich visualization:
 
 Key behaviours:
 - Incoming txs are buffered in `state.tx_buffer`; `flush_tx_buffer` drains every 200ms as a single `tx_batch` — reduces JSON serialization from N×M to 1 per flush interval
-- `broadcast()` serializes the event to JSON once, then sends the same string to all clients. Clients that take >5s to receive are disconnected (they reconnect and get a fresh snapshot)
+- `broadcast()` serializes the event to JSON once, then sends the same string to all clients in parallel via `asyncio.gather`. Clients that take >5s to receive are disconnected (they reconnect and get a fresh snapshot)
 - `listen_blocks` has a 5-minute `asyncio.wait_for` timeout: on timeout it checks node height via RPC and fetches any missed block before reconnecting
 - `block_seen` includes `prev_block_time` tracked via `state.last_block_time`
 - `_refresh_stats` splits RPC calls into core (must succeed) and optional (fail gracefully)
@@ -85,6 +85,10 @@ Key behaviours:
 ## ✅ Last completed
 
 - **Server split into modules:** `state`, `config`, `rpc`, `stats`, `feeds`, `zmq_listeners`, `ws`, `main` — `main.py` now ~75 lines
+- **Mempool oldest tx age:** `entry_time` tracked on each tx at ZMQ receive; `oldest_mempool_sec` computed in `_refresh_stats` and shown in Mempool HUD block
+- **Per-block median fee rate:** computed from `getblock` verbosity-2 data in `get_block_info`; shown in block segment tooltip
+- **Parallel broadcast:** `broadcast()` uses `asyncio.gather` — all clients receive simultaneously, slow clients don't block others
+- **Connected viewer count:** `client_count` included in `stats_update`; shown as "Viewers" row in Peers HUD block
 - **TX batching:** incoming txs buffered in `state.tx_buffer`, flushed every 200ms as a single `tx_batch` event — reduces JSON serialization from N×M to 1 per interval
 - **Pre-serialization in broadcast:** `json.dumps()` once, `send_text()` to each client — same payload string shared across all connections
 - **Send timeout:** clients that take >5s to receive are disconnected; they reconnect and get a fresh snapshot
