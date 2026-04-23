@@ -115,6 +115,7 @@ async def _refresh_stats() -> None:
         return round(float(rate) * 1e8 / 1000, 1) if rate else None
 
     state.cached_stats = {
+        "client_count":     len(state.clients),
         "block_height":     int(chain_info.get("blocks", 0)),
         "best_block_hash":  best_hash,
         "best_block_time":  int(best_block.get("time", 0)),

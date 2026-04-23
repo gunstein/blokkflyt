@@ -27,6 +27,7 @@ function updateMempoolSection(data: StatsPayload): void {
 
 function updatePeersSection(data: StatsPayload): void {
   setText("peers-count", String(data.peers));
+  if (data.client_count !== undefined) setText("client-count", String(data.client_count));
   const dotsEl = document.getElementById("peers-dots")!;
   dotsEl.innerHTML = "";
   for (let i = 0; i < Math.min(data.peers, 10); i++) {

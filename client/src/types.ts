@@ -14,6 +14,7 @@ export interface SupplyPayload {
 }
 
 export interface StatsPayload {
+  client_count?: number;
   block_height: number;
   best_block_hash: string;
   best_block_time: number;
