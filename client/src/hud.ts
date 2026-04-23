@@ -39,6 +39,15 @@ function updatePeersSection(data: StatsPayload): void {
 function updateNetworkSection(data: StatsPayload): void {
   if (data.hashrate_eh !== undefined) setText("hashrate",   data.hashrate_eh + " EH/s");
   if (data.difficulty  !== undefined) setText("difficulty", data.difficulty  + " T");
+  if (data.blocks_until_adj != null)
+    setText("adj-blocks", data.blocks_until_adj.toLocaleString() + " blk");
+  if (data.adj_pct_estimate != null) {
+    const pct   = data.adj_pct_estimate;
+    const sign  = pct > 0 ? "+" : "";
+    const color = pct > 0 ? "#ff4444" : "#44cc88";
+    document.getElementById("adj-pct")!.innerHTML =
+      `<span style="color:${color}">${sign}${pct}%</span>`;
+  }
 }
 
 function updateLatestBlockSection(data: StatsPayload): void {

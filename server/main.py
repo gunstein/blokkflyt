@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 import xml.etree.ElementTree as ET
 from collections import deque
 from contextlib import asynccontextmanager
@@ -46,7 +47,8 @@ cached_stats: dict | None = None
 cached_news: list[dict] = []
 cached_price: dict | None = None
 cached_sparkline: list[float] = []
-recent_blocks: deque[dict] = deque(maxlen=12)
+recent_blocks: deque[dict] = deque(maxlen=20)
+last_block_time: int = 0
 
 zmq_ctx = zmq.asyncio.Context()
 
@@ -201,6 +203,29 @@ async def _refresh_stats() -> None:
         "daily_tx_count":   int(tx_stats.get("window_tx_count", 0)),
         "supply":           _compute_supply(int(chain_info.get("blocks", 0))),
     }
+
+    try:
+        current_height = int(chain_info.get("blocks", 0))
+        blocks_in_epoch = current_height % 2016
+        epoch_start_height = current_height - blocks_in_epoch
+        blocks_until_adj = 2016 - blocks_in_epoch
+        if blocks_in_epoch > 5:
+            epoch_hash = await asyncio.to_thread(lambda: rpc().getblockhash(epoch_start_height))
+            epoch_header = await asyncio.to_thread(lambda: rpc().getblockheader(epoch_hash))
+            elapsed = time.time() - epoch_header["time"]
+            expected = blocks_in_epoch * 600
+            adj_pct = round((expected / elapsed - 1) * 100, 1) if elapsed > 0 else None
+            if adj_pct is not None:
+                adj_pct = max(-75.0, min(300.0, adj_pct))
+        else:
+            adj_pct = None
+        cached_stats["blocks_until_adj"] = int(blocks_until_adj)
+        cached_stats["adj_pct_estimate"] = adj_pct
+    except Exception as e:
+        print(f"[STATS] difficulty adj failed: {e}")
+        cached_stats["blocks_until_adj"] = None
+        cached_stats["adj_pct_estimate"] = None
+
     await broadcast({"type": "stats_update", **cached_stats})
 
 
@@ -267,29 +292,57 @@ async def get_block_info(block_hash: str) -> dict:
 
 
 async def listen_blocks() -> None:
+    global last_block_time
+    ZMQ_TIMEOUT = 300  # 5 minutes; check for missed blocks if nothing arrives
+
     while True:
+        sock = zmq_ctx.socket(zmq.SUB)
         try:
-            sock = zmq_ctx.socket(zmq.SUB)
             sock.connect(f"tcp://{BITCOIN_HOST}:{ZMQ_BLOCK_PORT}")
             sock.setsockopt_string(zmq.SUBSCRIBE, "hashblock")
             print("[ZMQ] Listening for blocks...")
             while True:
-                parts = await sock.recv_multipart()
-                block_hash = parts[1].hex()
-                info = await get_block_info(block_hash)
-                for txid in info["confirmed_txids"]:
-                    mempool.pop(txid, None)
-                print(f"[BLOCK] ntx={info['ntx']} size={info['size_kb']}KB btc={info['total_btc']}")
-                block_event = {"type": "block_seen", "hash": block_hash, **info}
-                recent_blocks.append(block_event)
-                await broadcast(block_event)
+                block_hash = None
                 try:
-                    await _refresh_stats()
-                except Exception as e:
-                    print(f"[STATS] post-block refresh failed: {e}")
+                    parts = await asyncio.wait_for(sock.recv_multipart(), timeout=ZMQ_TIMEOUT)
+                    block_hash = parts[1].hex()
+                except asyncio.TimeoutError:
+                    print("[ZMQ] 5 min timeout — checking node for missed blocks...")
+                    try:
+                        chain_info = await asyncio.to_thread(lambda: rpc().getblockchaininfo())
+                        node_height = int(chain_info.get("blocks", 0))
+                        our_height  = cached_stats["block_height"] if cached_stats else 0
+                        if node_height > our_height:
+                            print(f"[ZMQ] Missed block! node={node_height} us={our_height} — fetching")
+                            block_hash = chain_info.get("bestblockhash", "")
+                        else:
+                            print("[ZMQ] No missed block, slow mining — continuing to wait")
+                    except Exception as e:
+                        print(f"[ZMQ] RPC check failed: {e}")
+                        break  # force reconnect
+
+                if block_hash:
+                    info = await get_block_info(block_hash)
+                    for txid in info["confirmed_txids"]:
+                        mempool.pop(txid, None)
+                    print(f"[BLOCK] ntx={info['ntx']} size={info['size_kb']}KB btc={info['total_btc']}")
+                    block_event = {
+                        "type": "block_seen", "hash": block_hash,
+                        **info, "prev_block_time": last_block_time,
+                    }
+                    last_block_time = info["time"]
+                    recent_blocks.append(block_event)
+                    await broadcast(block_event)
+                    try:
+                        await _refresh_stats()
+                    except Exception as e:
+                        print(f"[STATS] post-block refresh failed: {e}")
+
         except Exception as e:
             print(f"[ZMQ] block listener crashed: {e}, reconnecting in 5s...")
             await asyncio.sleep(5)
+        finally:
+            sock.close()
 
 
 async def sample_price() -> None:
@@ -408,8 +461,12 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     await ws.accept()
     clients.append(ws)
     print(f"[WS] Client connected ({len(clients)} total)")
-    for block_event in recent_blocks:
-        await ws.send_json(block_event)
+    block_list = list(recent_blocks)
+    for i, block_event in enumerate(block_list):
+        event_copy = dict(block_event)
+        if "prev_block_time" not in event_copy:
+            event_copy["prev_block_time"] = block_list[i - 1]["time"] if i > 0 else 0
+        await ws.send_json(event_copy)
     if cached_stats:
         await ws.send_json({"type": "stats_update", **cached_stats})
     if cached_price:

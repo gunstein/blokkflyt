@@ -23,6 +23,8 @@ export interface StatsPayload {
   peers: number;
   hashrate_eh?: number;
   difficulty?: number;
+  blocks_until_adj?: number | null;
+  adj_pct_estimate?: number | null;
   daily_tx_count?: number;
   fee_fast?: number | null;
   fee_medium?: number | null;
