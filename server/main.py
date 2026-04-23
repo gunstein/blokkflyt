@@ -1,414 +1,15 @@
 import asyncio
-import os
-import time
-import xml.etree.ElementTree as ET
-from collections import deque
 from contextlib import asynccontextmanager
-from email.utils import parsedate_to_datetime
 
-import httpx
-import zmq
-import zmq.asyncio
-from bitcoinrpc.authproxy import AuthServiceProxy
-from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-load_dotenv()
-
-BITCOIN_HOST = os.getenv("BITCOIN_RPC_HOST", "192.168.0.104")
-RPC_USER = os.getenv("BITCOIN_RPC_USER")
-RPC_PASSWORD = os.getenv("BITCOIN_RPC_PASSWORD")
-RPC_PORT = os.getenv("BITCOIN_RPC_PORT", "8332")
-ZMQ_BLOCK_PORT = 28332
-ZMQ_TX_PORT = 28333
-
-NEWS_RSS_URL = "https://bitcoinmagazine.com/feed"
-NEWS_FETCH_INTERVAL = 900   # 15 minutes
-PRICE_FETCH_INTERVAL = 60   # 1 minute
-SPARKLINE_FETCH_INTERVAL = 21600  # 6 hours
-
-COINGECKO_PRICE_URL = (
-    "https://api.coingecko.com/api/v3/simple/price"
-    "?ids=bitcoin&vs_currencies=usd&include_24hr_change=true"
-)
-COINGECKO_SPARKLINE_URL = (
-    "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
-    "?vs_currency=usd&days=7&interval=daily"
-)
-COINGECKO_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; blokkflyt)"}
-
-mempool: dict[str, dict] = {}
-clients: list[WebSocket] = []
-mempool_tx_samples: deque[int] = deque(maxlen=20)  # ~10 min at 30s intervals
-mempool_activity: dict = {"status": "calibrating", "deviation_pct": None, "baseline": None}
-cached_stats: dict | None = None
-cached_news: list[dict] = []
-cached_price: dict | None = None
-cached_sparkline: list[float] = []
-recent_blocks: deque[dict] = deque(maxlen=20)
-last_block_time: int = 0
-
-zmq_ctx = zmq.asyncio.Context()
-
-
-def rpc() -> AuthServiceProxy:
-    return AuthServiceProxy(f"http://{RPC_USER}:{RPC_PASSWORD}@{BITCOIN_HOST}:{RPC_PORT}")
-
-
-async def get_tx_info(txid: str) -> dict:
-    try:
-        entry = await asyncio.to_thread(lambda: rpc().getmempoolentry(txid))
-        fees = entry.get("fees", {})
-        vsize = entry.get("vsize", 1)
-        fee_sat = int(float(fees.get("base", 0)) * 1e8)
-        fee_rate = round(fee_sat / vsize, 2)
-    except Exception:
-        return {"fee_rate": None, "vsize": None, "amount_btc": None}
-
-    try:
-        raw = await asyncio.to_thread(lambda: rpc().getrawtransaction(txid, True))
-        amount_btc = round(sum(float(o["value"]) for o in raw.get("vout", [])), 8)
-    except Exception:
-        amount_btc = None
-
-    return {"fee_rate": fee_rate, "vsize": vsize, "amount_btc": amount_btc}
-
-
-FEE_BUCKETS = [
-    (0,   2,   "1-2"),
-    (2,   5,   "2-5"),
-    (5,   10,  "5-10"),
-    (10,  20,  "10-20"),
-    (20,  50,  "20-50"),
-    (50,  100, "50-100"),
-    (100, None, "100+"),
-]
-
-def _fee_histogram() -> list[dict]:
-    counts = [0] * len(FEE_BUCKETS)
-    for tx in mempool.values():
-        rate = tx.get("fee_rate")
-        if rate is None:
-            continue
-        for i, (low, high, _) in enumerate(FEE_BUCKETS):
-            if high is None or rate < high:
-                counts[i] += 1
-                break
-    return [{"label": label, "count": counts[i]}
-            for i, (_, _, label) in enumerate(FEE_BUCKETS)]
-
-
-def _compute_supply(block_height: int) -> dict:
-    HALVING_INTERVAL = 210_000
-    MAX_SUPPLY = 21_000_000.0
-    halvings = block_height // HALVING_INTERVAL
-    supply = sum(HALVING_INTERVAL * (50.0 / 2 ** e) for e in range(halvings))
-    supply += (block_height % HALVING_INTERVAL) * (50.0 / 2 ** halvings)
-    next_halving_block = (halvings + 1) * HALVING_INTERVAL
-    blocks_until = next_halving_block - block_height
-    return {
-        "circulating_btc": round(supply, 2),
-        "percent_mined": round(supply / MAX_SUPPLY * 100, 4),
-        "current_subsidy": 50.0 / 2 ** halvings,
-        "next_halving_block": next_halving_block,
-        "blocks_until_halving": blocks_until,
-        "days_until_halving": round(blocks_until * 10 / 60 / 24),
-    }
-
-
-def _median_fee_rate() -> float | None:
-    rates = [tx["fee_rate"] for tx in mempool.values() if tx.get("fee_rate") is not None]
-    if not rates:
-        return None
-    rates.sort()
-    mid = len(rates) // 2
-    return rates[mid] if len(rates) % 2 else round((rates[mid - 1] + rates[mid]) / 2, 2)
-
-
-def _compute_activity(current: int, samples: deque[int]) -> dict:
-    if len(samples) < 5:
-        return {"status": "calibrating", "deviation_pct": None, "baseline": None}
-    baseline = round(sum(list(samples)[:-1]) / (len(samples) - 1))
-    if baseline == 0:
-        return {"status": "calibrating", "deviation_pct": None, "baseline": None}
-    deviation_pct = round((current - baseline) / baseline * 100)
-    if deviation_pct > 50:
-        status = "congested"
-    elif deviation_pct > 20:
-        status = "busy"
-    elif deviation_pct < -30:
-        status = "quiet"
-    else:
-        status = "normal"
-    return {"status": status, "deviation_pct": deviation_pct, "baseline": baseline}
-
-
-async def _refresh_stats() -> None:
-    global cached_stats
-
-    # Core data — must all succeed; if any fails the whole refresh aborts.
-    chain_info, mempool_info, network_info = await asyncio.gather(
-        asyncio.to_thread(lambda: rpc().getblockchaininfo()),
-        asyncio.to_thread(lambda: rpc().getmempoolinfo()),
-        asyncio.to_thread(lambda: rpc().getnetworkinfo()),
-    )
-    best_hash  = chain_info.get("bestblockhash", "")
-    best_block = await asyncio.to_thread(lambda: rpc().getblockheader(best_hash))
-
-    # Optional data — failures are logged but do not abort the refresh.
-    try:
-        tx_stats = await asyncio.to_thread(lambda: rpc().getchaintxstats(144))
-    except Exception as e:
-        print(f"[STATS] getchaintxstats failed: {e}")
-        tx_stats = {}
-
-    try:
-        fee_fast, fee_medium, fee_slow = await asyncio.gather(
-            asyncio.to_thread(lambda: rpc().estimatesmartfee(1)),
-            asyncio.to_thread(lambda: rpc().estimatesmartfee(3)),
-            asyncio.to_thread(lambda: rpc().estimatesmartfee(6)),
-        )
-    except Exception as e:
-        print(f"[STATS] estimatesmartfee failed: {e}")
-        fee_fast = fee_medium = fee_slow = {}
-
-    difficulty  = chain_info.get("difficulty", 0)
-    hashrate_eh = round(float(str(difficulty)) * (2 ** 32) / 600 / 1e18, 2)
-
-    count = mempool_info.get("size", 0)
-    mempool_tx_samples.append(count)
-    mempool_activity.update(_compute_activity(count, mempool_tx_samples))
-
-    def to_sat_vb(est: dict) -> float | None:
-        rate = est.get("feerate")
-        return round(float(rate) * 1e8 / 1000, 1) if rate else None
-
-    cached_stats = {
-        "block_height":     int(chain_info.get("blocks", 0)),
-        "best_block_hash":  best_hash,
-        "best_block_time":  int(best_block.get("time", 0)),
-        "mempool_tx_count": count,
-        "mempool_size_mb":  round(int(mempool_info.get("bytes", 0)) / 1e6, 2),
-        "mempool_median_fee": _median_fee_rate(),
-        "peers":            int(network_info.get("connections", 0)),
-        "difficulty":       round(float(str(difficulty)) / 1e12, 2),
-        "hashrate_eh":      hashrate_eh,
-        "activity":         dict(mempool_activity),
-        "fee_fast":         to_sat_vb(fee_fast),
-        "fee_medium":       to_sat_vb(fee_medium),
-        "fee_slow":         to_sat_vb(fee_slow),
-        "fee_histogram":    _fee_histogram(),
-        "daily_tx_count":   int(tx_stats.get("window_tx_count", 0)),
-        "supply":           _compute_supply(int(chain_info.get("blocks", 0))),
-    }
-
-    try:
-        current_height = int(chain_info.get("blocks", 0))
-        blocks_in_epoch = current_height % 2016
-        epoch_start_height = current_height - blocks_in_epoch
-        blocks_until_adj = 2016 - blocks_in_epoch
-        if blocks_in_epoch > 5:
-            epoch_hash = await asyncio.to_thread(lambda: rpc().getblockhash(epoch_start_height))
-            epoch_header = await asyncio.to_thread(lambda: rpc().getblockheader(epoch_hash))
-            elapsed = time.time() - epoch_header["time"]
-            expected = blocks_in_epoch * 600
-            adj_pct = round((expected / elapsed - 1) * 100, 1) if elapsed > 0 else None
-            if adj_pct is not None:
-                adj_pct = max(-75.0, min(300.0, adj_pct))
-        else:
-            adj_pct = None
-        cached_stats["blocks_until_adj"] = int(blocks_until_adj)
-        cached_stats["adj_pct_estimate"] = adj_pct
-    except Exception as e:
-        print(f"[STATS] difficulty adj failed: {e}")
-        cached_stats["blocks_until_adj"] = None
-        cached_stats["adj_pct_estimate"] = None
-
-    await broadcast({"type": "stats_update", **cached_stats})
-
-
-async def sample_stats() -> None:
-    while True:
-        try:
-            await _refresh_stats()
-        except Exception as e:
-            print(f"[STATS] sample failed: {e}")
-        await asyncio.sleep(30)
-
-
-async def broadcast(event: dict) -> None:
-    disconnected = []
-    for ws in clients:
-        try:
-            await ws.send_json(event)
-        except Exception:
-            disconnected.append(ws)
-    for ws in disconnected:
-        clients.remove(ws)
-
-
-async def listen_txs() -> None:
-    while True:
-        try:
-            sock = zmq_ctx.socket(zmq.SUB)
-            sock.connect(f"tcp://{BITCOIN_HOST}:{ZMQ_TX_PORT}")
-            sock.setsockopt_string(zmq.SUBSCRIBE, "hashtx")
-            print("[ZMQ] Listening for transactions...")
-            while True:
-                parts = await sock.recv_multipart()
-                txid = parts[1].hex()
-                info = await get_tx_info(txid)
-                tx = {"txid": txid, **info}
-                mempool[txid] = tx
-                await broadcast({"type": "tx_seen", **tx})
-        except Exception as e:
-            print(f"[ZMQ] tx listener crashed: {e}, reconnecting in 5s...")
-            await asyncio.sleep(5)
-
-
-async def get_block_info(block_hash: str) -> dict:
-    try:
-        block = await asyncio.to_thread(lambda: rpc().getblock(block_hash, 2))
-        confirmed_txids = [tx["txid"] for tx in block.get("tx", [])]
-        ntx = block.get("nTx", 0)
-        size_kb = round(block.get("size", 0) / 1024, 1)
-        total_btc = sum(
-            float(vout["value"])
-            for tx in block.get("tx", [])[1:]  # skip coinbase
-            for vout in tx.get("vout", [])
-        )
-        return {
-            "confirmed_txids": confirmed_txids,
-            "ntx": ntx,
-            "size_kb": size_kb,
-            "total_btc": round(total_btc, 2),
-            "height": block.get("height", 0),
-            "time": block.get("time", 0),
-        }
-    except Exception:
-        return {"confirmed_txids": [], "ntx": 0, "size_kb": 0, "total_btc": 0, "height": 0, "time": 0}
-
-
-async def listen_blocks() -> None:
-    global last_block_time
-    ZMQ_TIMEOUT = 300  # 5 minutes; check for missed blocks if nothing arrives
-
-    while True:
-        sock = zmq_ctx.socket(zmq.SUB)
-        try:
-            sock.connect(f"tcp://{BITCOIN_HOST}:{ZMQ_BLOCK_PORT}")
-            sock.setsockopt_string(zmq.SUBSCRIBE, "hashblock")
-            print("[ZMQ] Listening for blocks...")
-            while True:
-                block_hash = None
-                try:
-                    parts = await asyncio.wait_for(sock.recv_multipart(), timeout=ZMQ_TIMEOUT)
-                    block_hash = parts[1].hex()
-                except asyncio.TimeoutError:
-                    print("[ZMQ] 5 min timeout — checking node for missed blocks...")
-                    try:
-                        chain_info = await asyncio.to_thread(lambda: rpc().getblockchaininfo())
-                        node_height = int(chain_info.get("blocks", 0))
-                        our_height  = cached_stats["block_height"] if cached_stats else 0
-                        if node_height > our_height:
-                            print(f"[ZMQ] Missed block! node={node_height} us={our_height} — fetching")
-                            block_hash = chain_info.get("bestblockhash", "")
-                        else:
-                            print("[ZMQ] No missed block, slow mining — continuing to wait")
-                    except Exception as e:
-                        print(f"[ZMQ] RPC check failed: {e}")
-                        break  # force reconnect
-
-                if block_hash:
-                    info = await get_block_info(block_hash)
-                    for txid in info["confirmed_txids"]:
-                        mempool.pop(txid, None)
-                    print(f"[BLOCK] ntx={info['ntx']} size={info['size_kb']}KB btc={info['total_btc']}")
-                    block_event = {
-                        "type": "block_seen", "hash": block_hash,
-                        **info, "prev_block_time": last_block_time,
-                    }
-                    last_block_time = info["time"]
-                    recent_blocks.append(block_event)
-                    await broadcast(block_event)
-                    try:
-                        await _refresh_stats()
-                    except Exception as e:
-                        print(f"[STATS] post-block refresh failed: {e}")
-
-        except Exception as e:
-            print(f"[ZMQ] block listener crashed: {e}, reconnecting in 5s...")
-            await asyncio.sleep(5)
-        finally:
-            sock.close()
-
-
-async def sample_price() -> None:
-    global cached_price
-    while True:
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(COINGECKO_PRICE_URL, headers=COINGECKO_HEADERS)
-            btc = resp.json().get("bitcoin", {})
-            cached_price = {
-                "usd": btc.get("usd"),
-                "change_24h": round(float(btc.get("usd_24h_change") or 0), 2),
-            }
-            await broadcast({"type": "price_update", **cached_price})
-        except Exception as e:
-            print(f"[PRICE] fetch failed: {e}")
-        await asyncio.sleep(PRICE_FETCH_INTERVAL)
-
-
-async def sample_sparkline() -> None:
-    global cached_sparkline
-    while True:
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(COINGECKO_SPARKLINE_URL, headers=COINGECKO_HEADERS)
-            prices = [p[1] for p in resp.json().get("prices", [])]
-            if prices:
-                cached_sparkline = [round(p, 2) for p in prices]
-                await broadcast({"type": "sparkline_update", "prices": cached_sparkline})
-        except Exception as e:
-            print(f"[SPARKLINE] fetch failed: {e}")
-        await asyncio.sleep(SPARKLINE_FETCH_INTERVAL)
-
-
-async def sample_news() -> None:
-    global cached_news
-    while True:
-        try:
-            headers = {"User-Agent": "Mozilla/5.0 (compatible; RSS reader)"}
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(NEWS_RSS_URL, headers=headers, follow_redirects=True)
-            root = ET.fromstring(resp.text)
-            items = []
-            for item in root.findall(".//item")[:5]:
-                title = (item.findtext("title") or "").strip()
-                if not title:
-                    continue
-                pub_ts = None
-                pub_date = (item.findtext("pubDate") or "").strip()
-                if pub_date:
-                    try:
-                        pub_ts = int(parsedate_to_datetime(pub_date).timestamp())
-                    except Exception:
-                        pass
-                items.append({
-                    "title": title,
-                    "link": (item.findtext("link") or "").strip(),
-                    "pub_ts": pub_ts,
-                })
-            if items and items != cached_news:
-                cached_news = items
-                await broadcast({"type": "news_update", "items": cached_news})
-                print(f"[NEWS] {len(cached_news)} headlines updated")
-        except Exception as e:
-            print(f"[NEWS] fetch failed: {e}")
-        await asyncio.sleep(NEWS_FETCH_INTERVAL)
+import state
+from config import ALLOWED_ORIGINS
+from feeds import sample_news, sample_price, sample_sparkline
+from stats import sample_stats
+from zmq_listeners import listen_blocks, listen_txs
 
 
 @asynccontextmanager
@@ -423,8 +24,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-_raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:5174")
-ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",")]
 
 app.add_middleware(
     CORSMiddleware,
@@ -437,47 +36,51 @@ app.add_middleware(
 @app.get("/health")
 async def health() -> JSONResponse:
     return JSONResponse({
-        "status": "ok",
-        "clients": len(clients),
-        "mempool_size": len(mempool),
-        "stats_available": cached_stats is not None,
+        "status":          "ok",
+        "clients":         len(state.clients),
+        "mempool_size":    len(state.mempool),
+        "stats_available": state.cached_stats is not None,
     })
 
 
 @app.get("/snapshot")
 async def snapshot() -> JSONResponse:
-    return JSONResponse({"mempool": list(mempool.values())})
+    return JSONResponse({"mempool": list(state.mempool.values())})
 
 
 @app.get("/stats")
 async def stats() -> JSONResponse:
-    if cached_stats is None:
+    if state.cached_stats is None:
         return JSONResponse({"error": "stats not yet available"}, status_code=503)
-    return JSONResponse(cached_stats)
+    return JSONResponse(state.cached_stats)
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket) -> None:
     await ws.accept()
-    clients.append(ws)
-    print(f"[WS] Client connected ({len(clients)} total)")
-    block_list = list(recent_blocks)
+    state.clients.append(ws)
+    print(f"[WS] Client connected ({len(state.clients)} total)")
+
+    block_list = list(state.recent_blocks)
     for i, block_event in enumerate(block_list):
         event_copy = dict(block_event)
         if "prev_block_time" not in event_copy:
             event_copy["prev_block_time"] = block_list[i - 1]["time"] if i > 0 else 0
         await ws.send_json(event_copy)
-    if cached_stats:
-        await ws.send_json({"type": "stats_update", **cached_stats})
-    if cached_price:
-        await ws.send_json({"type": "price_update", **cached_price})
-    if cached_sparkline:
-        await ws.send_json({"type": "sparkline_update", "prices": cached_sparkline})
-    if cached_news:
-        await ws.send_json({"type": "news_update", "items": cached_news})
+
+    if state.cached_stats:
+        await ws.send_json({"type": "stats_update", **state.cached_stats})
+    if state.cached_price:
+        await ws.send_json({"type": "price_update", **state.cached_price})
+    if state.cached_sparkline:
+        await ws.send_json({"type": "sparkline_update", "prices": state.cached_sparkline})
+    if state.cached_news:
+        await ws.send_json({"type": "news_update", "items": state.cached_news})
+
     try:
         while True:
             await ws.receive_text()
     except WebSocketDisconnect:
-        clients.remove(ws)
-        print(f"[WS] Client disconnected ({len(clients)} total)")
+        if ws in state.clients:
+            state.clients.remove(ws)
+        print(f"[WS] Client disconnected ({len(state.clients)} total)")
