@@ -142,10 +142,10 @@ client/src/utils.ts       ← pure visual-encoding functions
 
 The server broadcasts these JSON events to all connected clients:
 
-### `tx_seen`
-New transaction entered the mempool.
+### `tx_batch`
+Batch of new transactions that entered the mempool since the last flush (every 200ms).
 ```json
-{ "type": "tx_seen", "txid": "...", "fee_rate": 12.5, "vsize": 250, "amount_btc": 0.05 }
+{ "type": "tx_batch", "txs": [{ "txid": "...", "fee_rate": 12.5, "vsize": 250, "amount_btc": 0.05 }] }
 ```
 
 ### `block_seen`

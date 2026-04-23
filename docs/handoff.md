@@ -11,30 +11,29 @@ It must be updated after each meaningful change.
 Full end-to-end flow with rich visualization:
 **Bitcoin Core → ZMQ → FastAPI → WebSocket → PixiJS canvas in browser**
 
-### Server (`server/main.py`)
-- ZMQ listeners for `hashtx` and `hashblock` — reconnect automatically on crash
-- **`listen_blocks` has a 5-minute `asyncio.wait_for` timeout:** on timeout it calls `getblockchaininfo` via RPC and checks if the node has a block the server missed. If yes, fetches and broadcasts it. If no, logs "slow mining" and keeps waiting. Prevents silent ZMQ hangs from missing blocks.
-- Per transaction: fetches `fee_rate`, `vsize`, `amount_btc` via RPC (`getmempoolentry` + `getrawtransaction`)
-- Per block: fetches `confirmed_txids`, `ntx`, `size_kb`, `time`, `height` via RPC (`getblock` verbosity 2)
-- `block_seen` event includes `prev_block_time` (unix timestamp of the previous block) — tracked via `last_block_time` global
-- Only confirmed txids are removed from mempool on block
-- Background task `sample_stats()` runs every 30s and immediately on startup:
-  - Fetches core data (chain info, mempool info, network info, best block header) — all must succeed
-  - Fetches optional data (`getchaintxstats`, `estimatesmartfee`) — failures are logged and skipped gracefully
-  - Computes difficulty adjustment estimate: fetches epoch start block header, compares actual vs expected time, returns `blocks_until_adj` + `adj_pct_estimate`
-  - Computes mempool activity status from rolling window of 20 samples (~10 min)
-  - Caches result in `cached_stats` and broadcasts `stats_update` to all WS clients
-- Block arrival triggers immediate `_refresh_stats()` so HUD updates without delay
-- REST `GET /health` — returns server status, client count, mempool size, stats availability
-- REST `GET /snapshot` — initial mempool state for connecting clients
-- REST `GET /stats` — returns `cached_stats` for initial page load only
-- WebSocket `/ws` on connect sends: last 20 block events with `prev_block_time`, `cached_stats`, `cached_price`, `cached_sparkline`, `cached_news`
-- WebSocket `/ws` broadcasts: `tx_seen`, `block_seen`, `stats_update`, `price_update`, `sparkline_update`, `news_update`
-- Background task `sample_price()` fetches BTC/USD price from CoinGecko every 60s
-- Background task `sample_sparkline()` fetches 7-day price history from CoinGecko every 6h
-- Background task `sample_news()` fetches Bitcoin Magazine RSS every 15 min via `httpx`
-- All numeric values explicitly cast to `int()`/`float()` before JSON broadcast to avoid Decimal serialization errors from python-bitcoinrpc
-- All data is in-memory (appropriate — mempool is ephemeral and bounded by Bitcoin Core)
+### Server modules
+
+| File                 | Responsibility                                        |
+|----------------------|-------------------------------------------------------|
+| `state.py`           | Global mutable state: mempool, clients, caches, tx_buffer |
+| `config.py`          | Env vars + defaults (`BITCOIN_RPC_HOST` defaults to `localhost`) |
+| `rpc.py`             | Bitcoin Core RPC client, `get_tx_info`, `get_block_info` |
+| `stats.py`           | Fee histogram, supply, activity, difficulty adj, `_refresh_stats`, `sample_stats` |
+| `feeds.py`           | Price, sparkline, news background tasks               |
+| `zmq_listeners.py`   | ZMQ tx/block listeners, `flush_tx_buffer`             |
+| `ws.py`              | `broadcast()` — serializes once, 5s send timeout      |
+| `main.py`            | FastAPI app, routes, WebSocket endpoint (75 lines)    |
+
+Key behaviours:
+- Incoming txs are buffered in `state.tx_buffer`; `flush_tx_buffer` drains every 200ms as a single `tx_batch` — reduces JSON serialization from N×M to 1 per flush interval
+- `broadcast()` serializes the event to JSON once, then sends the same string to all clients. Clients that take >5s to receive are disconnected (they reconnect and get a fresh snapshot)
+- `listen_blocks` has a 5-minute `asyncio.wait_for` timeout: on timeout it checks node height via RPC and fetches any missed block before reconnecting
+- `block_seen` includes `prev_block_time` tracked via `state.last_block_time`
+- `_refresh_stats` splits RPC calls into core (must succeed) and optional (fail gracefully)
+- Difficulty adjustment estimate computed from epoch start block header
+- WebSocket on connect sends: last 20 `block_seen` events, `stats_update`, `price_update`, `sparkline_update`, `news_update`
+- WebSocket broadcasts: `tx_batch`, `block_seen`, `stats_update`, `price_update`, `sparkline_update`, `news_update`
+- All numeric values cast to `int()`/`float()` before broadcast to prevent Decimal serialization errors
 
 ### Client (`client/src/main.ts` + `client/src/utils.ts`)
 - Pure functions (visual encoding, time formatting) extracted to `utils.ts`
@@ -85,6 +84,12 @@ Full end-to-end flow with rich visualization:
 
 ## ✅ Last completed
 
+- **Server split into modules:** `state`, `config`, `rpc`, `stats`, `feeds`, `zmq_listeners`, `ws`, `main` — `main.py` now ~75 lines
+- **TX batching:** incoming txs buffered in `state.tx_buffer`, flushed every 200ms as a single `tx_batch` event — reduces JSON serialization from N×M to 1 per interval
+- **Pre-serialization in broadcast:** `json.dumps()` once, `send_text()` to each client — same payload string shared across all connections
+- **Send timeout:** clients that take >5s to receive are disconnected; they reconnect and get a fresh snapshot
+- **`BITCOIN_RPC_HOST` default changed** from hardcoded `192.168.0.104` to `localhost`
+- **README rewritten:** quick start, prerequisites, env var table, Bitcoin Core config, test instructions, module table, full WebSocket event contracts
 - **Clock ring architecture:** two rings outside mempool ring
   - Inner ring: growing arc showing real-time mining progress (grey→orange→red over 60 min)
   - Outer ring: last 20 confirmed blocks evenly spaced, thickness by tx count

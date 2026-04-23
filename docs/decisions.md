@@ -168,6 +168,38 @@ Agents and developers must read this before changing the architecture.
 
 ---
 
+## 2026-04-23 — Server split into modules
+
+**Decision:** Split monolithic `main.py` (~580 lines) into eight focused modules: `state`, `config`, `rpc`, `stats`, `feeds`, `zmq_listeners`, `ws`, `main`.
+
+**Why:** Each module now has a single reason to change. `main.py` is ~75 lines (app wiring only). The split also enables unit testing of `stats.py` functions without importing FastAPI or triggering side effects.
+
+---
+
+## 2026-04-23 — TX batching + pre-serialization in broadcast
+
+**Decision:** Incoming transactions are appended to `state.tx_buffer` instead of being broadcast immediately. `flush_tx_buffer` drains the buffer every 200ms as a single `tx_batch` event. `broadcast()` serializes the event once with `json.dumps()` and sends the same string to all clients via `send_text()`.
+
+**Why:** Without batching, a burst of 50 transactions would trigger 50 × N `send_json()` calls (where N = connected clients), each re-serializing the same object. Batching reduces serialization cost from N×M to 1 per flush interval. Pre-serialization ensures the payload is identical across all clients (no redundant `json.dumps` per client).
+
+---
+
+## 2026-04-23 — WebSocket send timeout (5s)
+
+**Decision:** Each `ws.send_text()` in `broadcast()` is wrapped with `asyncio.wait_for(..., timeout=5.0)`. Any client that fails to receive within 5 seconds is disconnected.
+
+**Why:** A slow or stuck client would block the broadcast coroutine, delaying all other clients. Disconnecting it is safe because the client-side reconnect logic immediately sends a fresh snapshot on re-connect.
+
+---
+
+## 2026-04-23 — BITCOIN_RPC_HOST default changed to localhost
+
+**Decision:** `config.py` defaults `BITCOIN_RPC_HOST` to `"localhost"` instead of the former hardcoded `192.168.0.104`.
+
+**Why:** Hardcoding a private IP as a default would silently fail for anyone cloning the repo. `localhost` is the correct default for local development; production environments always override via env var.
+
+---
+
 ## 2026-04-23 — Clock hands on canvas
 
 **Decision:** Hour, minute, and second hands are drawn as thin semi-transparent lines from the canvas center, animated every frame.
