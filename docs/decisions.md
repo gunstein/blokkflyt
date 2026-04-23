@@ -147,3 +147,29 @@ Agents and developers must read this before changing the architecture.
 **Decision:** Both `listen_txs` and `listen_blocks` wrap their inner loop in a try/except that sleeps 5 seconds and retries on any exception.
 
 **Why:** Without this, a single ZMQ error silently kills the listener loop. The server process stays alive but stops delivering data with no visible indication.
+
+---
+
+## 2026-04-23 — ZMQ block listener: 5-minute timeout + RPC fallback
+
+**Decision:** `listen_blocks` uses `asyncio.wait_for(sock.recv_multipart(), timeout=300)`. On `asyncio.TimeoutError` it calls `getblockchaininfo` via RPC and compares node block height to `cached_stats["block_height"]`. If they differ, the missed block is fetched and broadcast. If not, "slow mining" is logged and the loop continues.
+
+**Why:** ZMQ connections can silently hang — no exception is raised, but messages stop arriving. This is not caught by the crash-restart loop. A 5-minute timeout is long enough to not fire during normal mining but short enough to detect hangs and missed blocks before users notice a stale display.
+
+---
+
+## 2026-04-23 — Two-ring block visualization
+
+**Decision:** Block visualization uses two separate rings outside the mempool ring:
+1. **Mining arc ring** (`ringRadius + 36px`): clock-based arc showing real-time elapsed time since last block. Grows from last block's minute position toward current time. Color signals: grey (normal) → orange (45+ min) → red (55+ min). Hidden after 60 min.
+2. **Confirmed blocks ring** (`ringRadius + 68px`): last 20 blocks evenly spaced with fixed arc width, stroke thickness proportional to tx count, yellow→orange color gradient.
+
+**Why:** Previously both functions shared one ring, making it hard to distinguish "current block being mined" from "historical confirmed blocks". Separating them gives each ring a single clear meaning. The clock metaphor on the inner ring makes mining duration immediately readable.
+
+---
+
+## 2026-04-23 — Clock hands on canvas
+
+**Decision:** Hour, minute, and second hands are drawn as thin semi-transparent lines from the canvas center, animated every frame.
+
+**Why:** The mining arc ring is already a clock face (0–60 min). Adding clock hands makes the time reference explicit and ties the visualization to wall-clock time without requiring a separate UI element. Hands are kept semi-transparent (alpha 0.5–0.7) so they don't obscure the transaction animation behind them.
