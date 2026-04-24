@@ -229,3 +229,51 @@ Agents and developers must read this before changing the architecture.
 **Decision:** Hour, minute, and second hands are drawn as thin semi-transparent lines from the canvas center, animated every frame.
 
 **Why:** The mining arc ring is already a clock face (0–60 min). Adding clock hands makes the time reference explicit and ties the visualization to wall-clock time without requiring a separate UI element. Hands are kept semi-transparent (alpha 0.5–0.7) so they don't obscure the transaction animation behind them.
+
+---
+
+## 2026-04-24 — Mobile HUD: hidden by default, toggle overlay
+
+**Decision:** On mobile (≤640px) both HUDs are hidden by default. A ≡ button (bottom-right) opens them as a side-by-side scrollable overlay with a dark backdrop. The ring center moves to 50% of screen height (was 67%).
+
+**Why:** With HUDs visible on both sides the ring was completely obscured on narrow screens — no usable gap remained between 145px HUDs on a 390px screen. Hiding by default gives the canvas full screen real estate; the toggle gives access to all stats on demand.
+
+---
+
+## 2026-04-24 — Wake lock button on desktop
+
+**Decision:** A small ◎ button (bottom-left, desktop only) requests `navigator.wakeLock` to prevent the screensaver. Re-acquires on tab focus if the user had it active.
+
+**Why:** Blokkflyt is intended as a passive display. Without wake lock the screensaver kicks in after a few minutes, defeating the purpose. Hidden on mobile where the OS handles this differently and screen-on is a battery concern.
+
+---
+
+## 2026-04-24 — WebSocket connection limits
+
+**Decision:** Server enforces two limits: max 100 total WS clients, max 20 per source IP (read from `X-Forwarded-For`). Connection is accepted first, then closed with code 1013 or 1008 if over limit.
+
+**Why:** Without limits a single actor can open unlimited connections and exhaust server resources. Accept-before-close is required because calling `ws.close()` before `ws.accept()` is undefined behaviour in Starlette.
+
+---
+
+## 2026-04-24 — Remove /snapshot endpoint
+
+**Decision:** Removed `GET /snapshot` which returned the full in-memory mempool as JSON.
+
+**Why:** The endpoint was only used during early development. The client now receives the full snapshot via WebSocket on connect. The endpoint was unprotected, could return several MB of data, and had no rate limiting — an easy amplification vector.
+
+---
+
+## 2026-04-24 — Pin dependency versions
+
+**Decision:** `requirements.txt` uses exact `==` versions for all direct and key transitive dependencies.
+
+**Why:** `>=` versions mean a container rebuild could silently install a newer (potentially vulnerable or breaking) version. Pinning makes builds reproducible and supply-chain changes visible as explicit diffs.
+
+---
+
+## 2026-04-24 — TxNode uses Container + child Graphics
+
+**Decision:** `TxNode.gfx` is now a `Container` (handles position, events, children). A child `Graphics` object (`TxNode.circle`) handles the circle drawing. The ₿ label `Text` is added to the container, not the graphics.
+
+**Why:** PixiJS v8 deprecated `Graphics.addChild` — only `Container` objects should have children. The split also clarifies intent: one object owns layout, one owns rendering.

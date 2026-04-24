@@ -43,7 +43,7 @@ npm run dev
 # Opens at http://localhost:5173
 ```
 
-The Vite dev server proxies `/ws`, `/snapshot`, `/stats`, `/health` to `localhost:8000` automatically.
+The Vite dev server proxies `/ws`, `/stats`, `/health` to `localhost:8000` automatically.
 
 ---
 

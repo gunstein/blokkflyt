@@ -33,6 +33,9 @@ Key behaviours:
 - Difficulty adjustment estimate computed from epoch start block header
 - WebSocket on connect sends: last 20 `block_seen` events, `stats_update`, `price_update`, `sparkline_update`, `news_update`
 - WebSocket broadcasts: `tx_batch`, `block_seen`, `stats_update`, `price_update`, `sparkline_update`, `news_update`
+- `stats_update` includes `client_count` and `oldest_mempool_sec`
+- `block_seen` includes `median_fee` (median sat/vB of confirmed txs)
+- WS connection limits: max 100 total, max 20 per IP (accept → close pattern)
 - All numeric values cast to `int()`/`float()` before broadcast to prevent Decimal serialization errors
 
 ### Client (`client/src/main.ts` + `client/src/utils.ts`)
@@ -84,6 +87,11 @@ Key behaviours:
 
 ## ✅ Last completed
 
+- **Security hardening:** WS connection limits (100 total, 20/IP), `/snapshot` removed, WS rejection after `accept()`, deps pinned to exact versions
+- **Mobile HUD toggle:** HUDs hidden by default on mobile (≤640px); ≡ button bottom-right opens both HUDs as scrollable overlay; tap backdrop to close
+- **Wake lock button:** ◎ button bottom-left on desktop keeps screen awake via Wake Lock API (hidden on mobile)
+- **Browser context menu suppressed** on long press over canvas (`contextmenu` preventDefault + CSS)
+- **PixiJS deprecation fix:** `TxNode` uses `Container` for position/events and child `Graphics` for drawing — removes `Graphics.addChild` deprecation warning
 - **Server split into modules:** `state`, `config`, `rpc`, `stats`, `feeds`, `zmq_listeners`, `ws`, `main` — `main.py` now ~75 lines
 - **Mempool oldest tx age:** `entry_time` tracked on each tx at ZMQ receive; `oldest_mempool_sec` computed in `_refresh_stats` and shown in Mempool HUD block
 - **Per-block median fee rate:** computed from `getblock` verbosity-2 data in `get_block_info`; shown in block segment tooltip
