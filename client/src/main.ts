@@ -1,4 +1,4 @@
-import { Application, Graphics, Text, TextStyle } from "pixi.js";
+import { Application, Container, Graphics, Text, TextStyle } from "pixi.js";
 import { type TxState, HIGH_FEE_THRESHOLD, nodeRadius, vsizeAlpha, stateColor, blockStrokeWidth } from "./utils";
 import { type StatsPayload } from "./types";
 import { updateHud, updatePrice, updateSparkline, updateNewsTicker, updateLatestBlock, setLastBlockTime, showTooltip, showBlockTooltip, moveTooltip, hideTooltip } from "./hud";
@@ -16,7 +16,8 @@ const DESKTOP_CENTER_SHIFT = 40;   // px above screen center on desktop
 
 interface TxNode {
   txid: string;
-  gfx: Graphics;
+  gfx: Container;
+  circle: Graphics;
   x: number; y: number;
   vx: number; vy: number;
   firing: boolean;
@@ -191,10 +192,10 @@ function drawNode(node: TxNode): void {
   const radius = nodeRadius(node.amountBtc);
   const alpha  = vsizeAlpha(node.vsize);
   const color  = stateColor(node.state);
-  node.gfx.clear();
-  node.gfx.circle(0, 0, radius).fill({ color, alpha });
+  node.circle.clear();
+  node.circle.circle(0, 0, radius).fill({ color, alpha });
   if (node.state === "high_fee")
-    node.gfx.circle(0, 0, radius).stroke({ color: 0x4488ff, width: 1.5, alpha: 0.7 });
+    node.circle.circle(0, 0, radius).stroke({ color: 0x4488ff, width: 1.5, alpha: 0.7 });
 }
 
 function addTx(txid: string, feeRate: number | null, vsize: number | null, amountBtc: number | null, initialState: TxState = "new"): void {
@@ -207,9 +208,11 @@ function addTx(txid: string, feeRate: number | null, vsize: number | null, amoun
     nodes.delete(oldest);
   }
 
-  const angle = Math.random() * Math.PI * 2;
-  const speed = 0.2 + Math.random() * 0.3;
-  const gfx   = new Graphics();
+  const angle  = Math.random() * Math.PI * 2;
+  const speed  = 0.2 + Math.random() * 0.3;
+  const gfx    = new Container();
+  const circle = new Graphics();
+  gfx.addChild(circle);
 
   if (amountBtc !== null && amountBtc >= 1) {
     const radius = nodeRadius(amountBtc);
@@ -228,7 +231,7 @@ function addTx(txid: string, feeRate: number | null, vsize: number | null, amoun
   app.stage.addChild(gfx);
 
   const node: TxNode = {
-    txid, gfx,
+    txid, gfx, circle,
     x: centerX(), y: centerY(),
     vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
     firing: false, state: initialState, createdAt: Date.now(),
