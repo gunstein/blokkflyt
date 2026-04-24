@@ -44,6 +44,7 @@ let currentMiningStartTime = 0;
 
 const app = new Application();
 await app.init({ resizeTo: window, background: 0x000000 });
+app.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 document.getElementById("app")!.appendChild(app.canvas);
 
 function centerX(): number { return app.screen.width / 2; }
