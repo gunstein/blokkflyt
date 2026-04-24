@@ -11,7 +11,7 @@ const MAX_BLOCKS           = 20;
 const HOUR_SECS            = 3600;
 const NEW_TX_MS            = 3_000;
 const MOBILE_BREAKPOINT    = 640;
-const MOBILE_CENTER_RATIO  = 0.67;
+const MOBILE_CENTER_RATIO  = 0.50;
 const DESKTOP_CENTER_SHIFT = 40;   // px above screen center on desktop
 
 interface TxNode {

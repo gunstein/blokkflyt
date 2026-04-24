@@ -195,28 +195,67 @@
       }
 
       @media (max-width: 640px) {
-        .hud { width: 145px; gap: 8px; top: 12px; }
-        #hud-left  { left: 8px; }
-        #hud-right { right: 8px; }
-        .hud-block { padding: 8px 10px; gap: 2px; }
-        .hud-value { font-size: 17px; }
-        .hud-label { font-size: 9px; }
-        .hud-row   { font-size: 10px; }
-        .hud-mono  { font-size: 9px; }
-
-        /* Hide less essential blocks on mobile */
-        #hud-left .hud-block:nth-child(3),
-        #hud-left .hud-block:nth-child(6),
-        #hud-left .hud-block:nth-child(7) { display: none; }
-
-        #hud-right .hud-block:nth-child(2),
-        #hud-right .hud-block:nth-child(5) { display: none; }
-
-        .peers-dots { display: none; }
-        #price-sparkline { display: none !important; }
+        /* HUDs hidden by default — shown via overlay toggle */
+        .hud { display: none; }
         #legend { display: none; }
-
         #news-ticker { bottom: 12px; font-size: 10px; max-width: 90%; }
+
+        /* Toggle button */
+        #hud-toggle {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: fixed;
+          bottom: 16px;
+          right: 16px;
+          width: 42px;
+          height: 42px;
+          background: rgba(10, 15, 25, 0.85);
+          border: 1px solid #1e2d3d;
+          border-radius: 8px;
+          color: #aabbcc;
+          font-size: 20px;
+          cursor: pointer;
+          z-index: 300;
+          pointer-events: all;
+        }
+
+        /* Backdrop */
+        #hud-backdrop {
+          display: none;
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.55);
+          z-index: 190;
+        }
+        body.hud-open #hud-backdrop { display: block; }
+
+        /* HUDs as overlay panels */
+        body.hud-open .hud {
+          display: flex;
+          position: fixed;
+          top: 12px;
+          bottom: 68px;
+          width: calc(50% - 12px);
+          overflow-y: auto;
+          z-index: 200;
+          gap: 8px;
+          padding: 8px 10px;
+        }
+        body.hud-open #hud-left  { left: 8px; }
+        body.hud-open #hud-right { right: 8px; }
+
+        /* Sizing inside overlay */
+        body.hud-open .hud-block { padding: 8px 10px; gap: 2px; }
+        body.hud-open .hud-value { font-size: 15px; }
+        body.hud-open .hud-label { font-size: 9px; }
+        body.hud-open .hud-row   { font-size: 10px; }
+        body.hud-open .hud-mono  { font-size: 9px; }
+      }
+
+      @media (min-width: 641px) {
+        #hud-toggle   { display: none; }
+        #hud-backdrop { display: none; }
       }
     </style>
   </head>
@@ -304,6 +343,9 @@
       </div>
     </div>
 
+    <div id="hud-backdrop"></div>
+    <button id="hud-toggle" aria-label="Toggle stats">≡</button>
+
     <div id="connection-status">Reconnecting…</div>
 
     <div id="tooltip">
@@ -348,6 +390,15 @@
       </div>
     </div>
 
+    <script>
+      (function () {
+        const btn      = document.getElementById("hud-toggle");
+        const backdrop = document.getElementById("hud-backdrop");
+        function toggle() { document.body.classList.toggle("hud-open"); }
+        btn.addEventListener("click", toggle);
+        backdrop.addEventListener("click", toggle);
+      })();
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
