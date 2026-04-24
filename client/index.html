@@ -278,7 +278,7 @@
         line-height: 1;
       }
       #wakelock-btn:hover  { color: #aabbcc; }
-      #wakelock-btn.active { color: #44cc88; }
+      #wakelock-btn.active { color: #44cc88; font-size: 20px; }
     </style>
   </head>
   <body>
@@ -427,16 +427,17 @@
         const btn = document.getElementById("wakelock-btn");
         let lock = null;
 
+        function setActive(active) {
+          btn.classList.toggle("active", active);
+          btn.textContent = active ? "◉" : "◎";
+          btn.title = active ? "Screen kept awake — click to release" : "Keep screen awake";
+        }
+
         async function acquire() {
           try {
             lock = await navigator.wakeLock.request("screen");
-            btn.classList.add("active");
-            btn.title = "Screen kept awake — click to release";
-            lock.addEventListener("release", () => {
-              lock = null;
-              btn.classList.remove("active");
-              btn.title = "Keep screen awake";
-            });
+            setActive(true);
+            lock.addEventListener("release", () => { lock = null; setActive(false); });
           } catch (_) {}
         }
 
@@ -446,7 +447,7 @@
 
         // Re-acquire if tab becomes visible again and lock was active
         document.addEventListener("visibilitychange", () => {
-          if (document.visibilityState === "visible" && btn.classList.contains("active") && !lock) {
+          if (document.visibilityState === "visible" && !lock && btn.classList.contains("active")) {
             acquire();
           }
         });
