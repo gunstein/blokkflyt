@@ -232,6 +232,14 @@ Agents and developers must read this before changing the architecture.
 
 ---
 
+## 2026-04-24 — Version info button
+
+**Decision:** `VERSION = "1.0.0"` defined in `server/config.py` and returned by `/health`. Client version comes from `package.json`, injected at build time via Vite `define` as `__APP_VERSION__`. A small `ℹ` button (bottom-left, visible on all platforms) shows both versions in a popup on click.
+
+**Why:** Makes it easy to verify that client and server are in sync after a deploy, without digging through logs or build artifacts. Visible on mobile too since it's useful for debugging regardless of platform.
+
+---
+
 ## 2026-04-24 — Mobile HUD: hidden by default, toggle overlay
 
 **Decision:** On mobile (≤640px) both HUDs are hidden by default. A ≡ button (bottom-right) opens them as a side-by-side scrollable overlay with a dark backdrop. The ring center moves to 50% of screen height (was 67%).
