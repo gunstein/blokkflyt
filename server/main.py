@@ -55,7 +55,8 @@ async def stats() -> JSONResponse:
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket) -> None:
-    client_ip = ws.headers.get("x-forwarded-for", ws.client.host or "unknown").split(",")[0].strip()
+    client_host = ws.client.host if ws.client else "unknown"
+    client_ip = ws.headers.get("x-forwarded-for", client_host).split(",")[0].strip()
 
     await ws.accept()
 
