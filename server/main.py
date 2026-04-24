@@ -44,10 +44,6 @@ async def health() -> JSONResponse:
     })
 
 
-@app.get("/snapshot")
-async def snapshot() -> JSONResponse:
-    return JSONResponse({"mempool": list(state.mempool.values())})
-
 
 @app.get("/stats")
 async def stats() -> JSONResponse:
@@ -60,6 +56,8 @@ async def stats() -> JSONResponse:
 async def websocket_endpoint(ws: WebSocket) -> None:
     client_ip = ws.headers.get("x-forwarded-for", ws.client.host or "unknown").split(",")[0].strip()
 
+    await ws.accept()
+
     if len(state.clients) >= state.MAX_WS_CLIENTS:
         await ws.close(1013)
         print(f"[WS] Rejected {client_ip}: server full ({state.MAX_WS_CLIENTS} clients)")
@@ -68,8 +66,6 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         await ws.close(1008)
         print(f"[WS] Rejected {client_ip}: per-IP limit ({state.MAX_WS_PER_IP}) reached")
         return
-
-    await ws.accept()
     state.clients.append(ws)
     state.ip_connections[client_ip] = state.ip_connections.get(client_ip, 0) + 1
     print(f"[WS] Client connected from {client_ip} ({len(state.clients)} total)")

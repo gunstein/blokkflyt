@@ -1,6 +1,11 @@
-fastapi>=0.115
-uvicorn[standard]>=0.34
-pyzmq>=26
-python-bitcoinrpc>=1.0
-python-dotenv>=1.0
-httpx>=0.28
+fastapi==0.136.0
+uvicorn[standard]==0.44.0
+pyzmq==27.1.0
+python-bitcoinrpc==1.0
+python-dotenv==1.0.1
+httpx==0.28.1
+starlette==1.0.0
+anyio==4.13.0
+h11==0.16.0
+httpcore==1.0.9
+websockets==16.0
