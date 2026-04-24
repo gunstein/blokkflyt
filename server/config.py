@@ -1,5 +1,7 @@
 import os
 
+VERSION = "1.0.0"
+
 from dotenv import load_dotenv
 
 load_dotenv()

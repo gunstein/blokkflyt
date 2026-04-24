@@ -1,4 +1,6 @@
 import { Application, Container, Graphics, Text, TextStyle } from "pixi.js";
+
+declare const __APP_VERSION__: string;
 import { type TxState, HIGH_FEE_THRESHOLD, nodeRadius, vsizeAlpha, stateColor, blockStrokeWidth } from "./utils";
 import { type StatsPayload } from "./types";
 import { updateHud, updatePrice, updateSparkline, updateNewsTicker, updateLatestBlock, setLastBlockTime, showTooltip, showBlockTooltip, moveTooltip, hideTooltip } from "./hud";
@@ -353,15 +355,6 @@ app.ticker.add(() => {
 
 // --- network ---
 
-async function fetchSnapshot(): Promise<void> {
-  const res  = await fetch(`${API_BASE}/snapshot`);
-  const data = await res.json();
-  data.mempool.forEach((tx: { txid: string; fee_rate: number | null; vsize: number | null; amount_btc: number | null }) => {
-    const state: TxState = (tx.fee_rate !== null && tx.fee_rate >= HIGH_FEE_THRESHOLD) ? "high_fee" : "mempool";
-    addTx(tx.txid, tx.fee_rate, tx.vsize, tx.amount_btc, state);
-  });
-}
-
 const connectionStatusEl = document.getElementById("connection-status")!;
 
 function connectWebSocket(): void {
@@ -395,6 +388,12 @@ async function fetchStats(): Promise<void> {
   } catch {}
 }
 
-fetchSnapshot();
 connectWebSocket();
 fetchStats();
+
+// version info
+(document.getElementById("info-client-ver") as HTMLElement).textContent = "v" + __APP_VERSION__;
+fetch(`${API_BASE}/health`)
+  .then(r => r.json())
+  .then(d => { (document.getElementById("info-server-ver") as HTMLElement).textContent = "v" + (d.version ?? "?"); })
+  .catch(() => {});

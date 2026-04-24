@@ -263,6 +263,42 @@
         #wakelock-btn { display: none; }
       }
 
+      #info-btn {
+        position: fixed;
+        bottom: 20px;
+        left: 68px;
+        background: none;
+        border: none;
+        color: #334455;
+        font-size: 15px;
+        cursor: pointer;
+        pointer-events: all;
+        z-index: 100;
+        transition: color 0.2s;
+        line-height: 1;
+        font-family: monospace;
+      }
+      #info-btn:hover { color: #aabbcc; }
+
+      #info-popup {
+        position: fixed;
+        bottom: 54px;
+        left: 24px;
+        background: rgba(10, 15, 25, 0.92);
+        border: 1px solid #1e2d3d;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 11px;
+        color: #aabbcc;
+        pointer-events: none;
+        display: none;
+        z-index: 101;
+        white-space: nowrap;
+        font-family: monospace;
+      }
+      #info-popup.visible { display: block; }
+      #info-popup span { color: #fff; }
+
       #wakelock-btn {
         position: fixed;
         bottom: 20px;
@@ -368,6 +404,11 @@
     <div id="hud-backdrop"></div>
     <button id="hud-toggle" aria-label="Toggle stats">≡</button>
     <button id="wakelock-btn" aria-label="Keep screen awake" title="Keep screen awake">◎</button>
+    <button id="info-btn" aria-label="Version info">ℹ</button>
+    <div id="info-popup">
+      <div>Client <span id="info-client-ver">—</span></div>
+      <div>Server <span id="info-server-ver">—</span></div>
+    </div>
 
     <div id="connection-status">Reconnecting…</div>
 
@@ -450,6 +491,19 @@
           if (document.visibilityState === "visible" && !lock && btn.classList.contains("active")) {
             acquire();
           }
+        });
+      })();
+    </script>
+    <script>
+      (function () {
+        const popup = document.getElementById("info-popup");
+        const btn   = document.getElementById("info-btn");
+        btn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          popup.classList.toggle("visible");
+        });
+        document.addEventListener("click", function () {
+          popup.classList.remove("visible");
         });
       })();
     </script>

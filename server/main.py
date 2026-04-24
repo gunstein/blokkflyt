@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 import state
-from config import ALLOWED_ORIGINS
+from config import ALLOWED_ORIGINS, VERSION
 from feeds import sample_news, sample_price, sample_sparkline
 from stats import sample_stats
 from zmq_listeners import listen_blocks, listen_txs, flush_tx_buffer
@@ -38,6 +38,7 @@ app.add_middleware(
 async def health() -> JSONResponse:
     return JSONResponse({
         "status":          "ok",
+        "version":         VERSION,
         "clients":         len(state.clients),
         "mempool_size":    len(state.mempool),
         "stats_available": state.cached_stats is not None,
