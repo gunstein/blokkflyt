@@ -58,9 +58,21 @@ async def stats() -> JSONResponse:
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket) -> None:
+    client_ip = ws.headers.get("x-forwarded-for", ws.client.host or "unknown").split(",")[0].strip()
+
+    if len(state.clients) >= state.MAX_WS_CLIENTS:
+        await ws.close(1013)
+        print(f"[WS] Rejected {client_ip}: server full ({state.MAX_WS_CLIENTS} clients)")
+        return
+    if state.ip_connections.get(client_ip, 0) >= state.MAX_WS_PER_IP:
+        await ws.close(1008)
+        print(f"[WS] Rejected {client_ip}: per-IP limit ({state.MAX_WS_PER_IP}) reached")
+        return
+
     await ws.accept()
     state.clients.append(ws)
-    print(f"[WS] Client connected ({len(state.clients)} total)")
+    state.ip_connections[client_ip] = state.ip_connections.get(client_ip, 0) + 1
+    print(f"[WS] Client connected from {client_ip} ({len(state.clients)} total)")
 
     block_list = list(state.recent_blocks)
     for i, block_event in enumerate(block_list):
@@ -84,4 +96,5 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     except WebSocketDisconnect:
         if ws in state.clients:
             state.clients.remove(ws)
-        print(f"[WS] Client disconnected ({len(state.clients)} total)")
+        state.ip_connections[client_ip] = max(0, state.ip_connections.get(client_ip, 0) - 1)
+        print(f"[WS] Client disconnected from {client_ip} ({len(state.clients)} total)")

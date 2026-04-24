@@ -1,7 +1,11 @@
 from collections import deque
 
+MAX_WS_CLIENTS    = 100
+MAX_WS_PER_IP     = 20
+
 mempool: dict[str, dict] = {}
 clients: list = []
+ip_connections: dict[str, int] = {}
 mempool_tx_samples: deque[int] = deque(maxlen=20)
 mempool_activity: dict = {"status": "calibrating", "deviation_pct": None, "baseline": None}
 cached_stats: dict | None = None
