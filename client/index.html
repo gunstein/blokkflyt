@@ -258,6 +258,23 @@
         #hud-toggle   { display: none; }
         #hud-backdrop { display: none; }
       }
+
+      #wakelock-btn {
+        position: fixed;
+        bottom: 20px;
+        left: 24px;
+        background: none;
+        border: none;
+        color: #334455;
+        font-size: 18px;
+        cursor: pointer;
+        pointer-events: all;
+        z-index: 100;
+        transition: color 0.2s;
+        line-height: 1;
+      }
+      #wakelock-btn:hover  { color: #aabbcc; }
+      #wakelock-btn.active { color: #44cc88; }
     </style>
   </head>
   <body>
@@ -346,6 +363,7 @@
 
     <div id="hud-backdrop"></div>
     <button id="hud-toggle" aria-label="Toggle stats">≡</button>
+    <button id="wakelock-btn" aria-label="Keep screen awake" title="Keep screen awake">◎</button>
 
     <div id="connection-status">Reconnecting…</div>
 
@@ -398,6 +416,36 @@
         function toggle() { document.body.classList.toggle("hud-open"); }
         btn.addEventListener("click", toggle);
         backdrop.addEventListener("click", toggle);
+      })();
+
+      (function () {
+        if (!("wakeLock" in navigator)) return;
+        const btn = document.getElementById("wakelock-btn");
+        let lock = null;
+
+        async function acquire() {
+          try {
+            lock = await navigator.wakeLock.request("screen");
+            btn.classList.add("active");
+            btn.title = "Screen kept awake — click to release";
+            lock.addEventListener("release", () => {
+              lock = null;
+              btn.classList.remove("active");
+              btn.title = "Keep screen awake";
+            });
+          } catch (_) {}
+        }
+
+        btn.addEventListener("click", () => {
+          if (lock) { lock.release(); } else { acquire(); }
+        });
+
+        // Re-acquire if tab becomes visible again and lock was active
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible" && btn.classList.contains("active") && !lock) {
+            acquire();
+          }
+        });
       })();
     </script>
     <script type="module" src="/src/main.ts"></script>
