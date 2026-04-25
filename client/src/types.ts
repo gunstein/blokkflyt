@@ -1,3 +1,27 @@
+// Wake Lock API (not yet in all TS lib versions)
+export interface WakeLockSentinel extends EventTarget {
+  release(): Promise<void>;
+}
+export interface WakeLockNavigator {
+  wakeLock: { request(type: "screen"): Promise<WakeLockSentinel> };
+}
+
+// WebSocket message types
+export interface TxPayload {
+  txid: string;
+  fee_rate: number | null;
+  vsize: number | null;
+  amount_btc: number | null;
+}
+export interface TxBatchMsg   { type: "tx_batch";        txs: TxPayload[] }
+export interface TxSeenMsg    { type: "tx_seen";         txid: string; fee_rate: number | null; vsize: number | null; amount_btc: number | null }
+export interface BlockSeenMsg { type: "block_seen";      hash: string; height: number; ntx: number; size_kb: number; total_btc: number; median_fee: number | null; time: number; prev_block_time: number; confirmed_txids: string[] }
+export interface StatsMsg     { type: "stats_update" }
+export interface PriceMsg     { type: "price_update";    usd: number; change_24h: number }
+export interface SparklineMsg { type: "sparkline_update"; prices: number[] }
+export interface NewsMsg      { type: "news_update";     items: { title: string; link: string; pub_ts: number }[] }
+export type WsMessage = TxBatchMsg | TxSeenMsg | BlockSeenMsg | StatsMsg & StatsPayload | PriceMsg | SparklineMsg | NewsMsg;
+
 export interface ActivityPayload {
   status: string;
   deviation_pct: number | null;

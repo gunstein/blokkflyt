@@ -3,7 +3,7 @@ import { initMobileHudToggle, initWakeLock, initVersionInfo } from "./ui";
 
 declare const __APP_VERSION__: string;
 import { type TxState, HIGH_FEE_THRESHOLD, nodeRadius, vsizeAlpha, stateColor, blockStrokeWidth } from "./utils";
-import { type StatsPayload } from "./types";
+import { type StatsPayload, type WsMessage } from "./types";
 import { updateHud, updatePrice, updateSparkline, updateNewsTicker, updateLatestBlock, setLastBlockTime, showTooltip, showBlockTooltip, moveTooltip, hideTooltip } from "./hud";
 
 const API_BASE = "";  // relative; Vite proxy in dev, Traefik in prod
@@ -362,7 +362,7 @@ function connectWebSocket(): void {
   const ws = new WebSocket(WS_URL);
   ws.onopen  = () => { connectionStatusEl.style.display = "none"; };
   ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
+    const msg = JSON.parse(event.data) as WsMessage;
     if      (msg.type === "tx_seen")          addTx(msg.txid, msg.fee_rate, msg.vsize, msg.amount_btc);
     else if (msg.type === "tx_batch")         for (const tx of msg.txs) addTx(tx.txid, tx.fee_rate, tx.vsize, tx.amount_btc);
     else if (msg.type === "block_seen")      onBlockSeen(msg.confirmed_txids ?? [], msg.size_kb ?? 0, msg.ntx ?? 0, msg.total_btc ?? 0, msg.height ?? 0, msg.time ?? 0, msg.median_fee ?? null);

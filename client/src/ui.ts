@@ -1,3 +1,5 @@
+import { type WakeLockSentinel, type WakeLockNavigator } from "./types";
+
 declare const __APP_VERSION__: string;
 
 export function initMobileHudToggle(): void {
@@ -10,6 +12,7 @@ export function initMobileHudToggle(): void {
 
 export function initWakeLock(): void {
   if (!("wakeLock" in navigator)) return;
+  const nav = navigator as unknown as WakeLockNavigator;
   const btn = document.getElementById("wakelock-btn")!;
   let lock: WakeLockSentinel | null = null;
 
@@ -20,11 +23,9 @@ export function initWakeLock(): void {
   }
 
   async function acquire(): Promise<void> {
+    try { await document.documentElement.requestFullscreen(); } catch (_) {}
     try {
-      await document.documentElement.requestFullscreen();
-    } catch (_) {}
-    try {
-      lock = await (navigator as unknown as { wakeLock: { request(t: string): Promise<WakeLockSentinel> } }).wakeLock.request("screen");
+      lock = await nav.wakeLock.request("screen");
       lock.addEventListener("release", () => { lock = null; });
     } catch (_) {}
     setActive(true);
@@ -37,17 +38,12 @@ export function initWakeLock(): void {
   }
 
   btn.addEventListener("click", () => { if (btn.classList.contains("active")) release(); else acquire(); });
-
-  // If user exits fullscreen manually (Esc), release wake lock too
   document.addEventListener("fullscreenchange", () => {
     if (!document.fullscreenElement && btn.classList.contains("active")) release();
   });
-
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && !lock && btn.classList.contains("active")) {
-      (navigator as unknown as { wakeLock: { request(t: string): Promise<WakeLockSentinel> } }).wakeLock
-        .request("screen").then(l => { lock = l; }).catch(() => {});
-    }
+    if (document.visibilityState === "visible" && !lock && btn.classList.contains("active"))
+      nav.wakeLock.request("screen").then(l => { lock = l; }).catch(() => {});
   });
 }
 
