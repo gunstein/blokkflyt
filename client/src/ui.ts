@@ -16,20 +16,38 @@ export function initWakeLock(): void {
   function setActive(active: boolean): void {
     btn.classList.toggle("active", active);
     btn.textContent = active ? "◉" : "◎";
-    btn.title = active ? "Screen kept awake — click to release" : "Keep screen awake";
+    btn.title = active ? "Fullscreen + screen awake — click to release" : "Fullscreen + keep screen awake";
   }
 
   async function acquire(): Promise<void> {
     try {
-      lock = await (navigator as unknown as { wakeLock: { request(t: string): Promise<WakeLockSentinel> } }).wakeLock.request("screen");
-      setActive(true);
-      lock.addEventListener("release", () => { lock = null; setActive(false); });
+      await document.documentElement.requestFullscreen();
     } catch (_) {}
+    try {
+      lock = await (navigator as unknown as { wakeLock: { request(t: string): Promise<WakeLockSentinel> } }).wakeLock.request("screen");
+      lock.addEventListener("release", () => { lock = null; });
+    } catch (_) {}
+    setActive(true);
   }
 
-  btn.addEventListener("click", () => { if (lock) lock.release(); else acquire(); });
+  async function release(): Promise<void> {
+    if (lock) { await lock.release(); lock = null; }
+    if (document.fullscreenElement) await document.exitFullscreen();
+    setActive(false);
+  }
+
+  btn.addEventListener("click", () => { if (btn.classList.contains("active")) release(); else acquire(); });
+
+  // If user exits fullscreen manually (Esc), release wake lock too
+  document.addEventListener("fullscreenchange", () => {
+    if (!document.fullscreenElement && btn.classList.contains("active")) release();
+  });
+
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && !lock && btn.classList.contains("active")) acquire();
+    if (document.visibilityState === "visible" && !lock && btn.classList.contains("active")) {
+      (navigator as unknown as { wakeLock: { request(t: string): Promise<WakeLockSentinel> } }).wakeLock
+        .request("screen").then(l => { lock = l; }).catch(() => {});
+    }
   });
 }
 
