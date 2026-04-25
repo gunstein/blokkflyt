@@ -90,7 +90,9 @@ Key behaviours:
 - **Version info button:** `ℹ` button (bottom-left, visible on all platforms) shows client + server version popup on click; `VERSION = "1.0.0"` in `server/config.py`, exposed via `/health`; client version injected from `package.json` via Vite `define`
 - **Security hardening:** WS connection limits (100 total, 20/IP), `/snapshot` removed, WS rejection after `accept()`, deps pinned to exact versions
 - **Mobile HUD toggle:** HUDs hidden by default on mobile (≤640px); ≡ button bottom-right opens both HUDs as scrollable overlay; tap backdrop to close
-- **Wake lock button:** ◎ button bottom-left on desktop keeps screen awake via Wake Lock API (hidden on mobile)
+- **Wake lock + fullscreen button:** ◎ button bottom-left on desktop triggers fullscreen + Wake Lock API simultaneously; Esc or second click releases both (hidden on mobile)
+- **CSP fix:** moved all inline `<script>` blocks to `src/ui.ts` — inline scripts were blocked by Traefik's `script-src 'self'` CSP in production
+- **`ws.client` None fix:** `ws.client` is `None` behind Traefik; now uses safe fallback before `ws.accept()`
 - **Browser context menu suppressed** on long press over canvas (`contextmenu` preventDefault + CSS)
 - **PixiJS deprecation fix:** `TxNode` uses `Container` for position/events and child `Graphics` for drawing — removes `Graphics.addChild` deprecation warning
 - **Server split into modules:** `state`, `config`, `rpc`, `stats`, `feeds`, `zmq_listeners`, `ws`, `main` — `main.py` now ~75 lines

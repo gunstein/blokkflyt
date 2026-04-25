@@ -248,11 +248,27 @@ Agents and developers must read this before changing the architecture.
 
 ---
 
-## 2026-04-24 — Wake lock button on desktop
+## 2026-04-24 — Wake lock + fullscreen button on desktop
 
-**Decision:** A small ◎ button (bottom-left, desktop only) requests `navigator.wakeLock` to prevent the screensaver. Re-acquires on tab focus if the user had it active.
+**Decision:** The ◎ button (bottom-left, desktop only) requests both `document.requestFullscreen()` and `navigator.wakeLock` simultaneously. Pressing Esc or clicking again releases both. If the user exits fullscreen manually, the wake lock is also released.
 
-**Why:** Blokkflyt is intended as a passive display. Without wake lock the screensaver kicks in after a few minutes, defeating the purpose. Hidden on mobile where the OS handles this differently and screen-on is a battery concern.
+**Why:** Blokkflyt is intended as a passive display. Fullscreen removes browser chrome and distractions; wake lock prevents the screensaver. They serve the same use case and are most useful together. Hidden on mobile where fullscreen and screen-on behave differently.
+
+---
+
+## 2026-04-25 — Inline scripts moved to ui.ts (CSP fix)
+
+**Decision:** All button logic (HUD toggle, wake lock, version info) was moved from inline `<script>` blocks in `index.html` to `src/ui.ts`, compiled by Vite and served from `'self'`.
+
+**Why:** Traefik's CSP header sets `script-src 'self' 'unsafe-eval'` — this blocks inline scripts entirely. The buttons appeared and were clickable but did nothing in production. Moving logic to a Vite-compiled module makes it a `'self'` resource and satisfies the CSP. The bug was invisible locally since Traefik is not present in the dev environment.
+
+---
+
+## 2026-04-25 — ws.client None behind reverse proxy
+
+**Decision:** `ws.client` is `None` when FastAPI/Starlette runs behind Traefik. Reading `ws.client.host` unconditionally raised `AttributeError` before `ws.accept()`, silently dropping all WebSocket connections in production.
+
+**Why the fix:** Use `ws.client.host if ws.client else "unknown"` before the accept call. The real client IP is read from `X-Forwarded-For` (set by Traefik) anyway, so the fallback is only used when the header is also absent.
 
 ---
 
