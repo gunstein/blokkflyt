@@ -256,6 +256,14 @@ Agents and developers must read this before changing the architecture.
 
 ---
 
+## 2026-04-25 — TypeScript strict mode + proper types
+
+**Decision:** Enabled `strict: true` in `tsconfig.json`. Added `WsMessage` union type covering all WebSocket message shapes. Replaced double-cast Wake Lock workaround with `WakeLockSentinel`/`WakeLockNavigator` interfaces in `types.ts`.
+
+**Why:** `strict: true` enables `strictNullChecks`, `noImplicitAny`, and `strictFunctionTypes` — the most impactful single TypeScript setting. Without it, many classes of bugs are invisible to the compiler. The `WsMessage` union type means accessing unknown message fields is a compile error rather than a silent runtime bug. The Wake Lock interfaces replace `as unknown as {...}` double-casting which suppresses all type checking on the cast value.
+
+---
+
 ## 2026-04-25 — Inline scripts moved to ui.ts (CSP fix)
 
 **Decision:** All button logic (HUD toggle, wake lock, version info) was moved from inline `<script>` blocks in `index.html` to `src/ui.ts`, compiled by Vite and served from `'self'`.
