@@ -43,11 +43,11 @@ export function initCanvas(app: Application): void {
   positionMempoolLabel();
 }
 
-export function centerX(): number { return _app.screen.width / 2; }
+export function centerX(): number { return window.innerWidth / 2; }
 export function centerY(): number {
   return window.innerWidth <= MOBILE_BREAKPOINT
-    ? _app.screen.height * MOBILE_CENTER_RATIO
-    : _app.screen.height / 2 - DESKTOP_CENTER_SHIFT;
+    ? window.innerHeight * MOBILE_CENTER_RATIO
+    : window.innerHeight / 2 - DESKTOP_CENTER_SHIFT;
 }
 export function ringRadius(): number          { return Math.min(centerX(), centerY()) * 0.72; }
 export function blockRingRadius(): number     { return ringRadius() + 36; }
