@@ -1,4 +1,5 @@
 import { Application, Container, Graphics, Text, TextStyle } from "pixi.js";
+import { initMobileHudToggle, initWakeLock, initVersionInfo } from "./ui";
 
 declare const __APP_VERSION__: string;
 import { type TxState, HIGH_FEE_THRESHOLD, nodeRadius, vsizeAlpha, stateColor, blockStrokeWidth } from "./utils";
@@ -390,10 +391,6 @@ async function fetchStats(): Promise<void> {
 
 connectWebSocket();
 fetchStats();
-
-// version info
-(document.getElementById("info-client-ver") as HTMLElement).textContent = "v" + __APP_VERSION__;
-fetch(`${API_BASE}/health`)
-  .then(r => r.json())
-  .then(d => { (document.getElementById("info-server-ver") as HTMLElement).textContent = "v" + (d.version ?? "?"); })
-  .catch(() => {});
+initMobileHudToggle();
+initWakeLock();
+initVersionInfo(API_BASE);

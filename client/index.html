@@ -454,59 +454,6 @@
       </div>
     </div>
 
-    <script>
-      (function () {
-        const btn      = document.getElementById("hud-toggle");
-        const backdrop = document.getElementById("hud-backdrop");
-        function toggle() { document.body.classList.toggle("hud-open"); }
-        btn.addEventListener("click", toggle);
-        backdrop.addEventListener("click", toggle);
-      })();
-
-      (function () {
-        if (!("wakeLock" in navigator)) return;
-        const btn = document.getElementById("wakelock-btn");
-        let lock = null;
-
-        function setActive(active) {
-          btn.classList.toggle("active", active);
-          btn.textContent = active ? "◉" : "◎";
-          btn.title = active ? "Screen kept awake — click to release" : "Keep screen awake";
-        }
-
-        async function acquire() {
-          try {
-            lock = await navigator.wakeLock.request("screen");
-            setActive(true);
-            lock.addEventListener("release", () => { lock = null; setActive(false); });
-          } catch (_) {}
-        }
-
-        btn.addEventListener("click", () => {
-          if (lock) { lock.release(); } else { acquire(); }
-        });
-
-        // Re-acquire if tab becomes visible again and lock was active
-        document.addEventListener("visibilitychange", () => {
-          if (document.visibilityState === "visible" && !lock && btn.classList.contains("active")) {
-            acquire();
-          }
-        });
-      })();
-    </script>
-    <script>
-      (function () {
-        const popup = document.getElementById("info-popup");
-        const btn   = document.getElementById("info-btn");
-        btn.addEventListener("click", function (e) {
-          e.stopPropagation();
-          popup.classList.toggle("visible");
-        });
-        document.addEventListener("click", function () {
-          popup.classList.remove("visible");
-        });
-      })();
-    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
