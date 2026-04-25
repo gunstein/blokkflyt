@@ -16,3 +16,4 @@ ALLOWED_ORIGINS      = [
     o.strip()
     for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:5174").split(",")
 ]
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

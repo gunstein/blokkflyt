@@ -1,10 +1,16 @@
 import asyncio
+import logging
 import time
 from collections import deque
 
 import state
 from rpc import rpc
 from ws import broadcast
+
+logger = logging.getLogger(__name__)
+
+BLOCK_TARGET_SECONDS = 600
+DIFFICULTY_PERIOD    = 2016
 
 FEE_BUCKETS = [
     (0,    2,   "1-2"),
@@ -90,7 +96,7 @@ async def _refresh_stats() -> None:
     try:
         tx_stats = await asyncio.to_thread(lambda: rpc().getchaintxstats(144))
     except Exception as e:
-        print(f"[STATS] getchaintxstats failed: {e}")
+        logger.warning("getchaintxstats failed: %s", e)
         tx_stats = {}
 
     try:
@@ -100,11 +106,11 @@ async def _refresh_stats() -> None:
             asyncio.to_thread(lambda: rpc().estimatesmartfee(6)),
         )
     except Exception as e:
-        print(f"[STATS] estimatesmartfee failed: {e}")
+        logger.warning("estimatesmartfee failed: %s", e)
         fee_fast = fee_medium = fee_slow = {}
 
     difficulty  = chain_info.get("difficulty", 0)
-    hashrate_eh = round(float(str(difficulty)) * (2 ** 32) / 600 / 1e18, 2)
+    hashrate_eh = round(float(str(difficulty)) * (2 ** 32) / BLOCK_TARGET_SECONDS / 1e18, 2)
 
     count = mempool_info.get("size", 0)
     state.mempool_tx_samples.append(count)
@@ -140,14 +146,14 @@ async def _refresh_stats() -> None:
 
     try:
         current_height     = int(chain_info.get("blocks", 0))
-        blocks_in_epoch    = current_height % 2016
+        blocks_in_epoch    = current_height % DIFFICULTY_PERIOD
         epoch_start_height = current_height - blocks_in_epoch
-        blocks_until_adj   = 2016 - blocks_in_epoch
+        blocks_until_adj   = DIFFICULTY_PERIOD - blocks_in_epoch
         if blocks_in_epoch > 5:
             epoch_hash   = await asyncio.to_thread(lambda: rpc().getblockhash(epoch_start_height))
             epoch_header = await asyncio.to_thread(lambda: rpc().getblockheader(epoch_hash))
             elapsed      = time.time() - epoch_header["time"]
-            expected     = blocks_in_epoch * 600
+            expected     = blocks_in_epoch * BLOCK_TARGET_SECONDS
             adj_pct      = round((expected / elapsed - 1) * 100, 1) if elapsed > 0 else None
             if adj_pct is not None:
                 adj_pct = max(-75.0, min(300.0, adj_pct))
@@ -156,7 +162,7 @@ async def _refresh_stats() -> None:
         state.cached_stats["blocks_until_adj"] = int(blocks_until_adj)
         state.cached_stats["adj_pct_estimate"] = adj_pct
     except Exception as e:
-        print(f"[STATS] difficulty adj failed: {e}")
+        logger.warning("difficulty adjustment estimate failed: %s", e)
         state.cached_stats["blocks_until_adj"] = None
         state.cached_stats["adj_pct_estimate"] = None
 
@@ -168,5 +174,5 @@ async def sample_stats() -> None:
         try:
             await _refresh_stats()
         except Exception as e:
-            print(f"[STATS] sample failed: {e}")
+            logger.error("stats refresh failed: %s", e)
         await asyncio.sleep(30)

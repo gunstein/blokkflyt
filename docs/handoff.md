@@ -79,6 +79,12 @@ Key behaviours:
 - **Connection status:** red "Reconnecting…" banner shown at top when WebSocket is disconnected; hidden on reconnect
 - Split into modules: `types.ts` (interfaces), `hud.ts` (DOM/HUD), `utils.ts` (pure functions), `main.ts` (PixiJS + network)
 
+Key server conventions:
+- All logging via `logging` module — `logger = logging.getLogger(__name__)` in each module
+- `LOG_LEVEL` env var controls verbosity (default `INFO`; use `DEBUG` locally for RPC noise)
+- `BLOCK_TARGET_SECONDS = 600`, `DIFFICULTY_PERIOD = 2016` in `stats.py` — named protocol constants
+- `state.py` uses `TYPE_CHECKING` to annotate `clients: list[WebSocket]` without circular import
+
 ### Tests
 - `client/src/utils.test.ts` — 26 vitest tests covering visual encoding thresholds (`npm test`)
 - `server/test_main.py` — 17 pytest tests covering `_median_fee_rate`, `_compute_activity`, `_compute_supply` (`python3 -m pytest test_main.py -v`)
@@ -87,6 +93,7 @@ Key behaviours:
 
 ## ✅ Last completed
 
+- **Python best practices:** `print()` replaced with `logging` module across all server modules; `LOG_LEVEL` env var added to `config.py`; `BLOCK_TARGET_SECONDS`/`DIFFICULTY_PERIOD` named constants in `stats.py`; `state.py` fully typed with `TYPE_CHECKING` pattern; silent exceptions in `rpc.py` now log at `DEBUG`/`ERROR`
 - **Version info button:** `ℹ` button (bottom-left, visible on all platforms) shows client + server version popup on click; `VERSION = "1.0.0"` in `server/config.py`, exposed via `/health`; client version injected from `package.json` via Vite `define`
 - **Security hardening:** WS connection limits (100 total, 20/IP), `/snapshot` removed, WS rejection after `accept()`, deps pinned to exact versions
 - **Mobile HUD toggle:** HUDs hidden by default on mobile (≤640px); ≡ button bottom-right opens both HUDs as scrollable overlay; tap backdrop to close

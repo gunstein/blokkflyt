@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
 
@@ -6,6 +7,8 @@ import httpx
 
 import state
 from ws import broadcast
+
+logger = logging.getLogger(__name__)
 
 NEWS_RSS_URL             = "https://bitcoinmagazine.com/feed"
 NEWS_FETCH_INTERVAL      = 900    # 15 minutes
@@ -35,7 +38,7 @@ async def sample_price() -> None:
             }
             await broadcast({"type": "price_update", **state.cached_price})
         except Exception as e:
-            print(f"[PRICE] fetch failed: {e}")
+            logger.warning("price fetch failed: %s", e)
         await asyncio.sleep(PRICE_FETCH_INTERVAL)
 
 
@@ -49,7 +52,7 @@ async def sample_sparkline() -> None:
                 state.cached_sparkline = [round(p, 2) for p in prices]
                 await broadcast({"type": "sparkline_update", "prices": state.cached_sparkline})
         except Exception as e:
-            print(f"[SPARKLINE] fetch failed: {e}")
+            logger.warning("sparkline fetch failed: %s", e)
         await asyncio.sleep(SPARKLINE_FETCH_INTERVAL)
 
 
@@ -70,8 +73,8 @@ async def sample_news() -> None:
                 if pub_date:
                     try:
                         pub_ts = int(parsedate_to_datetime(pub_date).timestamp())
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("pubDate parse failed for %r: %s", pub_date, e)
                 items.append({
                     "title":  title,
                     "link":   (item.findtext("link") or "").strip(),
@@ -80,7 +83,7 @@ async def sample_news() -> None:
             if items and items != state.cached_news:
                 state.cached_news = items
                 await broadcast({"type": "news_update", "items": state.cached_news})
-                print(f"[NEWS] {len(state.cached_news)} headlines updated")
+                logger.info("%d headlines updated", len(state.cached_news))
         except Exception as e:
-            print(f"[NEWS] fetch failed: {e}")
+            logger.warning("news fetch failed: %s", e)
         await asyncio.sleep(NEWS_FETCH_INTERVAL)

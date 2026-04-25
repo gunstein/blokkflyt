@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -6,10 +7,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 import state
-from config import ALLOWED_ORIGINS, VERSION
+from config import ALLOWED_ORIGINS, LOG_LEVEL, VERSION
 from feeds import sample_news, sample_price, sample_sparkline
 from stats import sample_stats
 from zmq_listeners import listen_blocks, listen_txs, flush_tx_buffer
+
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -62,15 +70,15 @@ async def websocket_endpoint(ws: WebSocket) -> None:
 
     if len(state.clients) >= state.MAX_WS_CLIENTS:
         await ws.close(1013)
-        print(f"[WS] Rejected {client_ip}: server full ({state.MAX_WS_CLIENTS} clients)")
+        logger.warning("Rejected %s: server full (%d clients)", client_ip, state.MAX_WS_CLIENTS)
         return
     if state.ip_connections.get(client_ip, 0) >= state.MAX_WS_PER_IP:
         await ws.close(1008)
-        print(f"[WS] Rejected {client_ip}: per-IP limit ({state.MAX_WS_PER_IP}) reached")
+        logger.warning("Rejected %s: per-IP limit (%d) reached", client_ip, state.MAX_WS_PER_IP)
         return
     state.clients.append(ws)
     state.ip_connections[client_ip] = state.ip_connections.get(client_ip, 0) + 1
-    print(f"[WS] Client connected from {client_ip} ({len(state.clients)} total)")
+    logger.info("Client connected from %s (%d total)", client_ip, len(state.clients))
 
     block_list = list(state.recent_blocks)
     for i, block_event in enumerate(block_list):
@@ -95,4 +103,4 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         if ws in state.clients:
             state.clients.remove(ws)
         state.ip_connections[client_ip] = max(0, state.ip_connections.get(client_ip, 0) - 1)
-        print(f"[WS] Client disconnected from {client_ip} ({len(state.clients)} total)")
+        logger.info("Client disconnected from %s (%d total)", client_ip, len(state.clients))

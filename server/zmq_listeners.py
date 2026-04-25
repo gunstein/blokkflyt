@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 
 import zmq
@@ -10,6 +11,7 @@ from rpc import rpc, get_tx_info, get_block_info
 from stats import _refresh_stats
 from ws import broadcast
 
+logger = logging.getLogger(__name__)
 zmq_ctx = zmq.asyncio.Context()
 
 
@@ -28,7 +30,7 @@ async def listen_txs() -> None:
             sock = zmq_ctx.socket(zmq.SUB)
             sock.connect(f"tcp://{BITCOIN_HOST}:{ZMQ_TX_PORT}")
             sock.setsockopt_string(zmq.SUBSCRIBE, "hashtx")
-            print("[ZMQ] Listening for transactions...")
+            logger.info("Listening for transactions...")
             while True:
                 parts = await sock.recv_multipart()
                 txid  = parts[1].hex()
@@ -37,7 +39,7 @@ async def listen_txs() -> None:
                 state.mempool[txid] = tx
                 state.tx_buffer.append(tx)  # buffer; flushed by flush_tx_buffer
         except Exception as e:
-            print(f"[ZMQ] tx listener crashed: {e}, reconnecting in 5s...")
+            logger.error("tx listener crashed: %s — reconnecting in 5s", e)
             await asyncio.sleep(5)
 
 
@@ -49,32 +51,32 @@ async def listen_blocks() -> None:
         try:
             sock.connect(f"tcp://{BITCOIN_HOST}:{ZMQ_BLOCK_PORT}")
             sock.setsockopt_string(zmq.SUBSCRIBE, "hashblock")
-            print("[ZMQ] Listening for blocks...")
+            logger.info("Listening for blocks...")
             while True:
                 block_hash = None
                 try:
                     parts      = await asyncio.wait_for(sock.recv_multipart(), timeout=ZMQ_TIMEOUT)
                     block_hash = parts[1].hex()
                 except asyncio.TimeoutError:
-                    print("[ZMQ] 5 min timeout — checking node for missed blocks...")
+                    logger.info("5 min timeout — checking node for missed blocks")
                     try:
                         chain_info  = await asyncio.to_thread(lambda: rpc().getblockchaininfo())
                         node_height = int(chain_info.get("blocks", 0))
                         our_height  = state.cached_stats["block_height"] if state.cached_stats else 0
                         if node_height > our_height:
-                            print(f"[ZMQ] Missed block! node={node_height} us={our_height} — fetching")
+                            logger.warning("Missed block: node=%d us=%d — fetching", node_height, our_height)
                             block_hash = chain_info.get("bestblockhash", "")
                         else:
-                            print("[ZMQ] No missed block, slow mining — continuing to wait")
+                            logger.info("No missed block, slow mining — continuing to wait")
                     except Exception as e:
-                        print(f"[ZMQ] RPC check failed: {e}")
+                        logger.error("RPC check failed: %s — forcing reconnect", e)
                         break  # force reconnect
 
                 if block_hash:
                     info = await get_block_info(block_hash)
                     for txid in info["confirmed_txids"]:
                         state.mempool.pop(txid, None)
-                    print(f"[BLOCK] ntx={info['ntx']} size={info['size_kb']}KB btc={info['total_btc']}")
+                    logger.info("block ntx=%d size=%sKB btc=%s", info["ntx"], info["size_kb"], info["total_btc"])
                     block_event = {
                         "type": "block_seen", "hash": block_hash,
                         **info, "prev_block_time": state.last_block_time,
@@ -85,10 +87,10 @@ async def listen_blocks() -> None:
                     try:
                         await _refresh_stats()
                     except Exception as e:
-                        print(f"[STATS] post-block refresh failed: {e}")
+                        logger.error("post-block stats refresh failed: %s", e)
 
         except Exception as e:
-            print(f"[ZMQ] block listener crashed: {e}, reconnecting in 5s...")
+            logger.error("block listener crashed: %s — reconnecting in 5s", e)
             await asyncio.sleep(5)
         finally:
             sock.close()

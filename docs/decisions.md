@@ -304,6 +304,32 @@ Agents and developers must read this before changing the architecture.
 
 ---
 
+## 2026-04-25 — Python logging module replaces print()
+
+**Decision:** All `print()` calls replaced with `logging` module. `logging.basicConfig()` configured in `main.py`. Each module uses `logger = logging.getLogger(__name__)`. `LOG_LEVEL` env var (default `INFO`) controls verbosity.
+
+**Why:** `print()` has no log levels, no timestamps, and no way to suppress noise in production. With `logging`, setting `LOG_LEVEL=WARNING` in prod silences expected debug chatter (e.g. tx-left-mempool RPC failures) while keeping errors visible. Log format includes timestamp, level, and module name for easier diagnosis.
+
+**Log levels used:** `DEBUG` for expected transient failures (tx leaving mempool before RPC query), `INFO` for normal operational events, `WARNING` for degraded-but-continuing states, `ERROR` for crashes and unexpected failures.
+
+---
+
+## 2026-04-25 — Named constants for Bitcoin protocol values
+
+**Decision:** `BLOCK_TARGET_SECONDS = 600` and `DIFFICULTY_PERIOD = 2016` defined as module-level constants in `stats.py`. Replace magic numbers in hashrate and difficulty adjustment calculations.
+
+**Why:** Magic numbers require the reader to know Bitcoin protocol to understand them. Named constants make the intent explicit and make the values easy to find if they ever need updating (e.g. for regtest/signet).
+
+---
+
+## 2026-04-25 — Typed state module with TYPE_CHECKING
+
+**Decision:** `state.py` uses `from __future__ import annotations` and `TYPE_CHECKING` to annotate `clients: list[WebSocket]` without a runtime circular import. All `dict` types use `dict[str, Any]`.
+
+**Why:** `clients: list` gave no type information to static analysis tools. `TYPE_CHECKING` is the standard Python pattern for annotating types that would cause circular imports at runtime — the import only happens during type checking, never at runtime.
+
+---
+
 ## 2026-04-24 — TxNode uses Container + child Graphics
 
 **Decision:** `TxNode.gfx` is now a `Container` (handles position, events, children). A child `Graphics` object (`TxNode.circle`) handles the circle drawing. The ₿ label `Text` is added to the container, not the graphics.
