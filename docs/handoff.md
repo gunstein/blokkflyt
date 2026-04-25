@@ -38,8 +38,18 @@ Key behaviours:
 - WS connection limits: max 100 total, max 20 per IP (accept → close pattern)
 - All numeric values cast to `int()`/`float()` before broadcast to prevent Decimal serialization errors
 
-### Client (`client/src/main.ts` + `client/src/utils.ts`)
-- Pure functions (visual encoding, time formatting) extracted to `utils.ts`
+### Client modules (`client/src/`)
+| File | Responsibility |
+|---|---|
+| `main.ts` | PixiJS app init, ticker loop, module wiring (28 lines) |
+| `canvas.ts` | Screen geometry, ring/clock/mining-arc drawing, block segments |
+| `nodes.ts` | `TxNode` type, node map, `addTx`, `drawNode`, physics (`tickNodes`) |
+| `network.ts` | WebSocket connection, `fetchStats`, message dispatch |
+| `hud.ts` | DOM/HUD updates |
+| `ui.ts` | Button init (mobile toggle, wake lock, version info) |
+| `utils.ts` | Pure visual encoding functions |
+| `types.ts` | Shared TypeScript interfaces and WsMessage union |
+
 - Transaction nodes rendered as circles:
   - **Color** = state: purple=new, blue=mempool, orange=high fee (≥10 sat/vB), yellow=selected
   - **High fee nodes** get a blue stroke to show they are also in mempool
@@ -77,7 +87,7 @@ Key behaviours:
 - News ticker: rotating Bitcoin Magazine headlines, one every 8s with fade + publication age
 - **Responsive layout:** on mobile (≤640px) HUDs narrow to 145px, less essential blocks hidden, legend hidden, circle shifted lower
 - **Connection status:** red "Reconnecting…" banner shown at top when WebSocket is disconnected; hidden on reconnect
-- Split into modules: `types.ts` (interfaces), `hud.ts` (DOM/HUD), `utils.ts` (pure functions), `main.ts` (PixiJS + network)
+- Split into modules: `canvas.ts` (geometry + rendering), `nodes.ts` (node physics), `network.ts` (WS + dispatch), `hud.ts` (DOM), `ui.ts` (buttons), `utils.ts` (pure functions), `types.ts` (interfaces), `main.ts` (28-line wiring)
 
 Key server conventions:
 - All logging via `logging` module — `logger = logging.getLogger(__name__)` in each module
@@ -93,6 +103,8 @@ Key server conventions:
 
 ## ✅ Last completed
 
+- **Client module split:** `main.ts` (396 lines) split into `canvas.ts` (geometry + rendering), `nodes.ts` (node physics), `network.ts` (WS + dispatch); `main.ts` now 28 lines of pure wiring
+- **Server `ws.py` consolidation:** `websocket_handler()` moved from `main.py` to `ws.py`; `main.py` now 68 lines of pure app wiring
 - **Python best practices:** `print()` replaced with `logging` module across all server modules; `LOG_LEVEL` env var added to `config.py`; `BLOCK_TARGET_SECONDS`/`DIFFICULTY_PERIOD` named constants in `stats.py`; `state.py` fully typed with `TYPE_CHECKING` pattern; silent exceptions in `rpc.py` now log at `DEBUG`/`ERROR`
 - **Version info button:** `ℹ` button (bottom-left, visible on all platforms) shows client + server version popup on click; `VERSION = "1.0.0"` in `server/config.py`, exposed via `/health`; client version injected from `package.json` via Vite `define`
 - **Security hardening:** WS connection limits (100 total, 20/IP), `/snapshot` removed, WS rejection after `accept()`, deps pinned to exact versions

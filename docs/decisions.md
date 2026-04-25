@@ -304,6 +304,24 @@ Agents and developers must read this before changing the architecture.
 
 ---
 
+## 2026-04-25 — Client split into canvas, nodes, network modules
+
+**Decision:** Split `main.ts` (396 lines) into four focused modules: `canvas.ts` (geometry + ring/clock/block rendering), `nodes.ts` (TxNode type + node physics), `network.ts` (WebSocket + fetch + message dispatch), `main.ts` (PixiJS init + ticker loop, now 28 lines).
+
+**Why:** `main.ts` mixed PixiJS rendering, node physics, animation, networking, and message dispatch — four distinct concerns. The split creates clean dependency boundaries: `nodes.ts` imports geometry from `canvas.ts`; `network.ts` coordinates canvas and nodes on incoming messages; `main.ts` only wires the pieces together. No circular dependencies.
+
+**Dependency direction:** `main` → `canvas`, `nodes`, `network` / `nodes` → `canvas` / `network` → `canvas`, `nodes`, `hud`.
+
+---
+
+## 2026-04-25 — WebSocket handler moved from main.py to ws.py
+
+**Decision:** `websocket_handler()` function extracted from `main.py` into `ws.py`. `main.py` registers the route with a one-liner: `await websocket_handler(ws)`.
+
+**Why:** `ws.py` already owns broadcast logic. Connection lifecycle (accept, rate-limit check, on-connect sends, disconnect cleanup) is WebSocket behaviour — it belongs in the same module as `broadcast()`. `main.py` is now pure app wiring (68 lines): lifespan tasks, middleware, route registration.
+
+---
+
 ## 2026-04-25 — Python logging module replaces print()
 
 **Decision:** All `print()` calls replaced with `logging` module. `logging.basicConfig()` configured in `main.py`. Each module uses `logger = logging.getLogger(__name__)`. `LOG_LEVEL` env var (default `INFO`) controls verbosity.
